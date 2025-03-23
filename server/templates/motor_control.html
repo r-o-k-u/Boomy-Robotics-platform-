@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Motor Control</title>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
+</head>
+
+<body>
+  <nav class="navbar navbar-expand-lg navbar-light bg-light">
+    <a class="navbar-brand" href="/">Robot Control Station</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent"
+      aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav mr-auto">
+        <li class="nav-item active">
+          <a class="nav-link" href="/">Home <span class="sr-only">(current)</span></a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/motor_control">Motor Control</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/sensor_data">Sensor Data</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/video_feed">Video Feed</a>
+        </li>
+      </ul>
+
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent"
+        aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+    </div>
+  </nav>
+
+  <div class="container mt-5">
+    <h1>Motor Control</h1>
+
+    <p>Available Motor Commands:</p>
+    <ul>
+      <li>Forward: {{ motor_commands['forward'] }}</li>
+      <li>Backward: {{ motor_commands['backward'] }}</li>
+      <li>Left: {{ motor_commands['left'] }}</li>
+      <li>Right: {{ motor_commands['right'] }}</li>
+    </ul>
+
+    <form action="/motor_control" method="post">
+      <input type="hidden" name="command" value="{{ command }}">
+      <button class="btn btn-primary">Send Command</button>
+    </form>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <canvas id="motor-command-chart"></canvas>
+
+    <script>
+      var ctx = document.getElementById('motor-command-chart').getContext('2d');
+      var motor_commands_data = JSON.parse('{{ motor_command_history | tojson | safe }}');
+      var motor_voltage_data = JSON.parse('{{ motor_voltage_history | tojson | safe }}');
+
+      var motor_commands_chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: motor_commands_data.labels,
+          datasets: [{
+            label: 'Motor Commands',
+            data: motor_commands_data.data,
+            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+            borderColor: 'rgba(255, 99, 132, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          scales: {
+            yAxes: [{
+              ticks: {
+                beginAtZero: true
+              }
+            }]
+          }
+        }
+      });
+
+      var motor_voltage_chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: motor_voltage_data.labels,
+          datasets: [{
+            label: 'Motor Voltage',
+            data: motor_voltage_data.data,
+            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          scales: {
+            yAxes: [{
+              ticks: {
+                beginAtZero: true
+              }
+            }]
+          }
+        }
+      });
+    </script>
+  </div>
+
+</body>
+
+</html>
