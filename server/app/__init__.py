@@ -1,145 +1,160 @@
 import json
-from flask import Flask, Blueprint, render_template, request, jsonify
-# import numpy as np
-# import pandas as pd
-# from sklearn.model_selection import train_test_split
-# from sklearn.linear_model import LinearRegression
-# from sklearn.metrics import mean_squared_error
+import platform
+import random
+import time
+from datetime import datetime
+from flask import Flask, render_template, jsonify, request, Response
+from flask_socketio import SocketIO
+import cv2
+import threading
 
-# app = Flask(__name__)
-app = Flask(__name__, template_folder='../templates', static_folder='../static')
+# ================= Hardware Abstraction Layer =================
+class RoverCore:
+    def __init__(self):
+        self.is_raspberry = self._check_raspberry()
+        self.control_source = 'transmitter'
+        self._init_hardware()
+        self._init_sensors()
+        self.kinect = None
+        self._init_kinect()
 
-# Create a blueprint for the robot control routes
-robot_control_blueprint = Blueprint('robot_control', __name__)
-app.register_blueprint(robot_control_blueprint)
+    def _check_raspberry(self):
+        return 'raspberrypi' in platform.uname().release.lower()
 
-ip_address = '192.168.0.100'
-port_number = 8080
-serial_number = 'ABC123'
-battery_voltage=12.3
-battery_current=2
-# Load sensor data from files
-def load_sensor_data():
-    temperature_file = "./json/temperature_history.json"
-    humidity_file = "./json/humidity_history.json"
-    pressure_file = "./json/pressure_history.json"
+    def _init_hardware(self):
+        if self.is_raspberry:
+            self._init_pi_hardware()
+        else:
+            self._init_simulated_hardware()
 
-    with open(temperature_file, 'r') as f:
-        temperature_data = json.load(f)
-    with open(humidity_file, 'r') as f:
-        humidity_data = json.load(f)
-    with open(pressure_file, 'r') as f:
-        pressure_data = json.load(f)
+    def _init_pi_hardware(self):
+        import RPi.GPIO as GPIO
+        from imusensor.MPU9250 import MPU9250
+        
+        # Motor Control Setup
+        GPIO.setmode(GPIO.BCM)
+        self.motors = {
+            'left': GPIO.PWM(17, 1000),  # Front-Left Motor
+            'right': GPIO.PWM(18, 1000)  # Front-Right Motor
+        }
+        for motor in self.motors.values():
+            motor.start(0)
+        
+        # IMU Setup
+        self.imu = MPU9250.MPU9250()
+        self.imu.begin()
+        
+        # Receiver Setup
+        self.receiver = IBus(uart_num=0)
 
-    return {
-        "temperature": temperature_data["data"][0],
-        "humidity": humidity_data["data"][0],
-        "pressure": pressure_data["data"][0]
-    }
+    def _init_simulated_hardware(self):
+        self.receiver = IBusSimulator()
+        self.imu = None
 
-# Load motor command history from file
-def load_motor_command_history():
-    with open("./json/motor_command_history.json", 'r') as f:
-        motor_commands_data = json.load(f)
+    def _init_sensors(self):
+        self.sensor_data = {
+            'battery': {'voltage': 12.6, 'current': 2.1, 'capacity': 5.0},
+            'imu': {'accel': [0]*3, 'gyro': [0]*3, 'mag': [0]*3},
+            'encoders': {'left': 0, 'right': 0},
+            'channels': [1500]*10
+        }
 
-    return {
-        "forward": motor_commands_data["data"][0],
-        "backward": motor_commands_data["data"][1],
-        "left": motor_commands_data["data"][2],
-        "right": motor_commands_data["data"][3]
-    }
+    def _init_kinect(self):
+        if self.is_raspberry:
+            self.kinect = cv2.VideoCapture(0)
+        else:
+            self.kinect = cv2.VideoCapture(0)  # Use webcam for simulation
 
-# Load frisky transmitter channels data from file
-def load_frisky_transmitter_channels():
-    with open("./json/frisky_transmitter_channels.json", 'r') as f:
-        frisky_transmitter_data = json.load(f)
+    def get_kinect_frame(self):
+        if self.kinect and self.kinect.isOpened():
+            ret, frame = self.kinect.read()
+            if ret:
+                return cv2.imencode('.jpg', frame)[1].tobytes()
+        return None
 
-    return frisky_transmitter_data
+    def update_sensors(self):
+        if self.is_raspberry:
+            self._update_pi_sensors()
+        else:
+            self._simulate_sensors()
 
-# Load battery voltage and current history from files
-def load_battery_voltage_history():
-    with open("./json/battery_voltage_history.json", 'r') as f:
-        battery_voltage_history_data = json.load(f)
+    def _update_pi_sensors(self):
+        # Read actual hardware sensors
+        self.sensor_data['imu']['accel'] = self.imu.get_accel()
+        self.sensor_data['imu']['gyro'] = self.imu.get_gyro()
+        self.sensor_data['channels'] = self.receiver.read()[1:]
+        
+        # Simulate encoder readings
+        self.sensor_data['encoders']['left'] = int(random.uniform(0, 1000))
+        self.sensor_data['encoders']['right'] = int(random.uniform(0, 1000))
 
-    return {
-        "labels": battery_voltage_history_data["labels"],
-        "data": battery_voltage_history_data["data"]
-    }
+    def _simulate_sensors(self):
+        # Generate realistic simulated data
+        self.sensor_data['imu']['accel'] = [random.gauss(0, 0.1) for _ in range(3)]
+        self.sensor_data['imu']['gyro'] = [random.gauss(0, 0.5) for _ in range(3)]
+        self.sensor_data['encoders'] = {
+            'left': int(random.uniform(0, 1000)),
+            'right': int(random.uniform(0, 1000))
+        }
+        self.sensor_data['channels'] = self.receiver.read()[1:]
 
-def load_battery_current_history():
-    with open("./json/battery_current_history.json", 'r') as f:
-        battery_current_history_data = json.load(f)
+    def set_motor_speeds(self, left, right):
+        if self.is_raspberry and self.control_source == 'ui':
+            self.motors['left'].ChangeDutyCycle(left)
+            self.motors['right'].ChangeDutyCycle(right)
 
-    return {
-        "labels": battery_current_history_data["labels"],
-        "data": battery_current_history_data["data"]
-    }
+# ================= Flask Application Setup =================
+app = Flask(__name__, template_folder='templates', static_folder='static')
+socketio = SocketIO(app, async_mode='threading')
+rover = RoverCore()
 
-# Route for home page
-@app.route('/')
-def index():
-    sensor_data = load_sensor_data()
-    motor_commands_data = load_motor_command_history()
-    frisky_transmitter_data = load_frisky_transmitter_channels()
-    battery_voltage_history_data = load_battery_voltage_history()
-    battery_current_history_data = load_battery_current_history()
+# ================= Video Streaming Endpoint =================
+def gen_frames():
+    while True:
+        frame = rover.get_kinect_frame()
+        if frame:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-    return render_template('index.html', title='Home',battery_voltage=battery_voltage,battery_current=battery_current,ip_address=ip_address,port_number=port_number,serial_number=serial_number, sensor_data=sensor_data, motor_commands=motor_commands_data, frisky_transmitter_channels=frisky_transmitter_data, battery_voltage_history=battery_voltage_history_data, battery_current_history=battery_current_history_data)
-
-# Route for sensor data
-@app.route('/sensors')
-def get_sensor_data():
-    sensor_data = load_sensor_data()
-    return render_template('sensor_data.html', title='Sensor Data', sensor_data=sensor_data)
-
-# Route for motor command history
-@app.route('/motor_control')
-def get_motor_command_history():
-    motor_commands_data = load_motor_command_history()
-    return render_template('motor_control.html', title='Motor Command History', motor_commands=motor_commands_data)
-# Route for sensor data
 @app.route('/video_feed')
-def get_video_feed():
-    return render_template('video_feed.html', title='Video feed')
+def video_feed():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-# Route for frisky transmitter channels data
-@app.route('/frisky-transmitter-channels')
-def get_frisky_transmitter_channels():
-    frisky_transmitter_data = load_frisky_transmitter_channels()
-    return render_template('video_feed.html', title='Frisky Transmitter Channels', frisky_transmitter_data=frisky_transmitter_data)
+# ================= WebSocket Handlers =================
+@socketio.on('connect')
+def handle_connect():
+    threading.Thread(target=sensor_update_loop).start()
 
-@app.route('/robot_status')
-def get_robot_status():
-    # Get the current status of the robot from the database or other source
-    # For now, just return a hardcoded value
-    status = 'Running'
-    return jsonify({'status': status})
+def sensor_update_loop():
+    while True:
+        rover.update_sensors()
+        socketio.emit('sensor_update', {
+            'telemetry': rover.sensor_data,
+            'channels': rover.sensor_data['channels'],
+            'battery': rover.sensor_data['battery']
+        })
+        time.sleep(0.1)
 
-@app.route('/robot_control', methods=['POST'])
-def control_robot():
-    data = request.get_json()
-    # Use the data to control the robot (e.g., send commands to the motor drivers)
-    # For now, just simulate the command
-    print(data)
-    return jsonify({'message': 'Robot commanded successfully'})
+# ================= Control Endpoints =================
+@app.route('/api/control/motors', methods=['POST'])
+def control_motors():
+    if rover.control_source == 'ui':
+        data = request.json
+        rover.set_motor_speeds(data['left'], data['right'])
+        return jsonify(success=True)
+    return jsonify(success=False, error="Transmitter control active")
 
-# Create a blueprint for the sensor data routes
-sensor_data_blueprint = Blueprint('sensor_data', __name__)
-app.register_blueprint(sensor_data_blueprint)
+@app.route('/api/control/source', methods=['POST'])
+def set_control_source():
+    data = request.json
+    rover.control_source = data['source']
+    return jsonify(success=True)
 
+# ================= Dashboard Routes =================
+@app.route('/')
+def control_dashboard():
+    return render_template('dashboard.html')
 
-
-# Create a blueprint for the motor control routes
-motor_control_blueprint = Blueprint('motor_control', __name__)
-app.register_blueprint(motor_control_blueprint)
-
-@app.route('/motors/<int:motor_id>', methods=['POST'])
-def control_motor(motor_id):
-    data = request.get_json()
-    # Use the data to control the specified motor (e.g., send commands to the motor driver)
-    # For now, just simulate the command
-    print(data)
-    return jsonify({'message': f'Motor {motor_id} commanded successfully'})
-
+# ================= Main Execution =================
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
