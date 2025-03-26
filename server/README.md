@@ -16,8 +16,20 @@ source venv/bin/activate
 ```
 
 # To run
+
+# To use these:
+
+# For development machines (Windows/Linux):
+
 ```
-pip install -r requirements.txt .
+
+ pip install -r requirements-dev.txt
+
+```
+## For Raspberry Pi:
+
+```
+pip install -r requirements-rpi.txt
 
 ```
 

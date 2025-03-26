@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Rover Control Center</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.3.0/raphael.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/justgage/1.4.0/justgage.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.5.0/dist/socket.io.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+      padding: 1rem;
+    }
+
+    .sensor-card,
+    .motor-control {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 1rem;
+    }
+
+    .motor-control {
+      background: #e9ecef;
+    }
+
+    .gauge-container {
+      width: 150px;
+      height: 150px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .channel-meter {
+      height: 25px;
+      background: #dee2e6;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="dashboard-grid">
+    <div class="sensor-card">
+      <h4>Kinect Vision Feed</h4>
+      <img src="/video_feed" class="img-fluid">
+    </div>
+
+    <div class="motor-control">
+      <h4>Motor Controls</h4>
+      <div class="row">
+        <div class="col">
+          <label>Left Motor</label>
+          <input type="range" class="form-range" id="leftMotor" min="-100" max="100">
+          <div class="progress">
+            <div id="leftMotorLoad" class="progress-bar"></div>
+          </div>
+        </div>
+        <div class="col">
+          <label>Right Motor</label>
+          <input type="range" class="form-range" id="rightMotor" min="-100" max="100">
+          <div class="progress">
+            <div id="rightMotorLoad" class="progress-bar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sensor-card">
+      <h4>System Telemetry</h4>
+      <div class="row">
+        <div class="col">
+          <h5>Battery</h5>
+          <div class="gauge-container">
+            <div id="voltageGauge"></div>
+          </div>
+          <div class="gauge-container">
+            <div id="currentGauge"></div>
+          </div>
+        </div>
+        <div class="col">
+          <h5>IMU Data</h5>
+          <div id="imuVisualization"></div>
+          <div id="accelData"></div>
+          <div id="gyroData"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sensor-card">
+      <h4>Transmitter Channels</h4>
+      <div id="channelsDisplay"></div>
+    </div>
+
+
+
+  </div>
+  <!-- <div class="dashboard-grid">
+    <div class="sensor-card">
+      <h4>IMU Visualization</h4>
+      <div id="imuVisualization" style="width: 300px; height: 300px;"></div>
+    </div>
+  </div> -->
+
+  <script>
+    const socket = io();
+    let voltageGauge, currentGauge;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      voltageGauge = new JustGage({ id: "voltageGauge", value: 0, min: 0, max: 24, title: "Voltage (V)", label: "V", gaugeWidthScale: 0.6, levelColors: ["#ff0000", "#f9c802", "#a9d70b"] });
+      currentGauge = new JustGage({ id: "currentGauge", value: 0, min: 0, max: 10, title: "Current (A)", label: "A", gaugeWidthScale: 0.6, levelColors: ["#ff0000", "#f9c802", "#a9d70b"] });
+    });
+
+    socket.on('sensor_update', data => {
+      voltageGauge.refresh(data.battery.voltage);
+      currentGauge.refresh(data.battery.current);
+      updateIMU(data.telemetry.imu);
+      document.getElementById('leftMotorLoad').style.width = `${Math.abs(data.telemetry.encoders.left / 10)}%`;
+      document.getElementById('rightMotorLoad').style.width = `${Math.abs(data.telemetry.encoders.right / 10)}%`;
+      updateChannels(data.channels);
+    });
+
+    let lastIMUUpdate = 0;
+
+    function updateIMU(imuData) {
+      const now = performance.now();
+      if (now - lastIMUUpdate < 50) return; // Limit updates to 20 FPS
+      lastIMUUpdate = now;
+
+      // Update IMU text data
+      document.getElementById('accelData').textContent =
+        `Accel: X=${imuData.accel[0].toFixed(2)}, Y=${imuData.accel[1].toFixed(2)}, Z=${imuData.accel[2].toFixed(2)}`;
+      document.getElementById('gyroData').textContent =
+        `Gyro: X=${imuData.gyro[0].toFixed(2)}, Y=${imuData.gyro[1].toFixed(2)}, Z=${imuData.gyro[2].toFixed(2)}`;
+
+      // Update 3D Object Rotation
+      updateIMU3D(imuData.gyro);
+    }
+
+    function updateChannels(channels) {
+      document.getElementById('channelsDisplay').innerHTML = channels.map((value, index) =>
+        `<div class="channel-meter"><div class="progress-bar" style="width: ${(value - 1000) / 10}%">CH${index + 1}: ${value}</div></div>`
+      ).join('');
+    }
+
+    document.getElementById('leftMotor').addEventListener('input', updateMotors);
+    document.getElementById('rightMotor').addEventListener('input', updateMotors);
+
+    function updateMotors() {
+      fetch('/api/control/motors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ left: leftMotor.value, right: rightMotor.value })
+      });
+    }
+
+    // Three.js Scene Setup
+    let scene, camera, renderer, cube;
+
+    function initIMU3D() {
+      const container = document.getElementById('imuVisualization');
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+      camera.position.z = 3;
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      container.appendChild(renderer.domElement);
+
+      // Create a Cube (IMU Representation)
+      const geometry = new THREE.BoxGeometry();
+      const material = new THREE.MeshStandardMaterial({ color: 0x0077ff, wireframe: true });
+      cube = new THREE.Mesh(geometry, material);
+      scene.add(cube);
+
+      // Light source
+      const light = new THREE.DirectionalLight(0xffffff, 1);
+      light.position.set(1, 1, 1).normalize();
+      scene.add(light);
+
+      animateIMU();
+    }
+
+    // Smooth animation loop
+    function animateIMU() {
+      requestAnimationFrame(animateIMU);
+      renderer.render(scene, camera);
+    }
+
+    // Update IMU 3D Rotation
+    function updateIMU3D(gyro) {
+      if (!cube) return;
+      cube.rotation.x = THREE.MathUtils.degToRad(gyro[0]);
+      cube.rotation.y = THREE.MathUtils.degToRad(gyro[1]);
+      cube.rotation.z = THREE.MathUtils.degToRad(gyro[2]);
+    }
+
+    // Initialize when page loads
+    document.addEventListener("DOMContentLoaded", initIMU3D);
+
+  </script>
+</body>
+
+</html>

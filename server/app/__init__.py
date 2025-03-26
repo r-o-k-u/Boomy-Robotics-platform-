@@ -8,6 +8,56 @@ from flask_socketio import SocketIO
 import cv2
 import threading
 
+
+class IBus:
+    def __init__(self, uart_num=0, baud=115200, num_channels=10):
+        self.num_channels = num_channels
+        self.ch = [0] * (self.num_channels + 1)  # ch[0] is status
+
+        if 'raspberrypi' in platform.uname().release.lower():
+            try:
+                try:
+                    from machine import UART
+                except ImportError:
+                    UART = None  # Handle the absence of the machine module
+            except ImportError:
+                UART = None  # Handle the absence of the machine module
+            self.uart = UART(uart_num, baud)
+        else:
+            self.uart = None
+
+    def read(self):
+        if self.uart:
+            # Actual hardware reading implementation
+            for _ in range(10):  # Max 10 attempts
+                if self.uart.read(1) == b'\x20':  # Start byte found
+                    buffer = self.uart.read(23)
+                    if buffer and len(buffer) == 23:
+                        checksum = 0xFFFF - 0x20
+                        for b in buffer[:21]:
+                            checksum -= b
+                        received_checksum = (buffer[22] << 8) | buffer[21]
+                        if checksum == received_checksum:
+                            self.ch[0] = 1
+                            for i in range(1, self.num_channels + 1):
+                                self.ch[i] = buffer[(i-1)*2] | (buffer[(i-1)*2 + 1] << 8)
+                            return self.ch
+        else:
+            # Fallback to simulated data if not on Raspberry Pi
+            return IBusSimulator().read()
+        return [0] * (self.num_channels + 1)
+
+class IBusSimulator:
+    def __init__(self):
+        self.ch = [1] + [random.randint(1000, 2000) for _ in range(10)]
+
+    def read(self):
+        # Simulate changing values with proper value clamping
+        self.ch = [1] + [
+            max(min(c + random.randint(-10, 10), 2000), 1000)
+            for c in self.ch[1:]
+        ]
+        return self.ch
 # ================= Hardware Abstraction Layer =================
 class RoverCore:
     def __init__(self):
@@ -30,7 +80,7 @@ class RoverCore:
     def _init_pi_hardware(self):
         import RPi.GPIO as GPIO
         from imusensor.MPU9250 import MPU9250
-        
+
         # Motor Control Setup
         GPIO.setmode(GPIO.BCM)
         self.motors = {
@@ -39,11 +89,11 @@ class RoverCore:
         }
         for motor in self.motors.values():
             motor.start(0)
-        
+
         # IMU Setup
         self.imu = MPU9250.MPU9250()
         self.imu.begin()
-        
+
         # Receiver Setup
         self.receiver = IBus(uart_num=0)
 
@@ -83,7 +133,7 @@ class RoverCore:
         self.sensor_data['imu']['accel'] = self.imu.get_accel()
         self.sensor_data['imu']['gyro'] = self.imu.get_gyro()
         self.sensor_data['channels'] = self.receiver.read()[1:]
-        
+
         # Simulate encoder readings
         self.sensor_data['encoders']['left'] = int(random.uniform(0, 1000))
         self.sensor_data['encoders']['right'] = int(random.uniform(0, 1000))
@@ -104,17 +154,27 @@ class RoverCore:
             self.motors['right'].ChangeDutyCycle(right)
 
 # ================= Flask Application Setup =================
-app = Flask(__name__, template_folder='templates', static_folder='static')
+
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
 socketio = SocketIO(app, async_mode='threading')
 rover = RoverCore()
+# Initialize camera
+camera = cv2.VideoCapture(0)
 
 # ================= Video Streaming Endpoint =================
 def gen_frames():
     while True:
-        frame = rover.get_kinect_frame()
+        frame = rover.get_kinect_frame()  # Attempt to get Kinect frame
         if frame:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        else:
+            # Kinect not connected or failed to get frame, fallback to default camera
+            success, fallback_frame = camera.read()
+            if success:
+                _, buffer = cv2.imencode('.jpg', fallback_frame)
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
 @app.route('/video_feed')
 def video_feed():
@@ -128,6 +188,11 @@ def handle_connect():
 def sensor_update_loop():
     while True:
         rover.update_sensors()
+        # print({
+        #     'telemetry': rover.sensor_data,
+        #     'channels': rover.sensor_data['channels'],
+        #     'battery': rover.sensor_data['battery']
+        # })
         socketio.emit('sensor_update', {
             'telemetry': rover.sensor_data,
             'channels': rover.sensor_data['channels'],

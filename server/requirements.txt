@@ -1,13 +1,13 @@
-# Base requirements for both development and Raspberry Pi
-Flask==2.0.3
-Flask-SocketIO==5.3.2
-python-engineio==4.3.4
-python-socketio==5.7.2
-opencv-python==4.5.5.64
-numpy==1.22.4
-pyyaml==6.0
-python-dotenv==0.20.0
+# First install these core dependencies
+setuptools
+wheel
 
-# Raspberry Pi-specific requirements (will be ignored on other platforms)
-RPi.GPIO==0.7.0
-imusensor==1.0.3
+# Then install the main requirements
+Flask
+Flask-SocketIO
+python-engineio
+python-socketio
+opencv-python-headless  # Use headless version for better compatibility
+numpy
+pyyaml
+python-dotenv
