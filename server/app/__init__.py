@@ -7,7 +7,8 @@ from flask import Flask, render_template, jsonify, request, Response
 from flask_socketio import SocketIO
 import cv2
 import threading
-
+import numpy as np
+from freenect import sync_get_video, dev_get_device, tilt, LED_GREEN, LED_RED
 
 class IBus:
     def __init__(self, uart_num=0, baud=115200, num_channels=10):
@@ -163,23 +164,162 @@ camera = cv2.VideoCapture(0)
 
 # ================= Video Streaming Endpoint =================
 def gen_frames():
+    camera = None
+    kinect_available = True  # Start assuming Kinect is available
+    last_kinect_check = 0
+    KINECT_CHECK_INTERVAL = 15  # Check for Kinect every 15 seconds
+
     while True:
-        frame = rover.get_kinect_frame()  # Attempt to get Kinect frame
+        # Check Kinect status periodically (not every frame)
+        if time.time() - last_kinect_check > KINECT_CHECK_INTERVAL:
+            kinect_available = True
+            last_kinect_check = time.time()
+
+        frame = None
+        if kinect_available:
+            try:
+                frame = rover.get_kinect_frame()
+                if not frame:  # Kinect exists but frame read failed
+                    kinect_available = False
+                    print("Kinect frame read failed, switching to webcam")
+            except Exception as e:
+                kinect_available = False
+                print(f"Kinect error: {str(e)}")
+
+            if frame:
+                # Clear webcam resources if switching back to Kinect
+                if camera is not None:
+                    camera.release()
+                    camera = None
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                continue  # Skip webcam processing
+
+        # Webcam fallback
+        if not frame:
+            if camera is None:
+                try:
+                    camera = cv2.VideoCapture(0)
+                    if not camera.isOpened():
+                        raise RuntimeError("Webcam unavailable")
+                except Exception as e:
+                    print(f"Webcam error: {str(e)}")
+                    time.sleep(2)  # Prevent log spam
+                    continue
+
+            success = False
+            try:
+                success, fallback_frame = camera.read()
+            except Exception as e:
+                print(f"Webcam read error: {str(e)}")
+
+            if not success:
+                camera.release()
+class KinectController:
+    def __init__(self):
+        self.kinect_available = False
+        self.device = None
+        self.current_led = LED_GREEN
+        self.tilt_angle = 0
+        self.initialize_kinect()
+
+    def initialize_kinect(self):
+        try:
+            # Attempt to get Kinect device
+            self.device = dev_get_device(0)
+            self.kinect_available = True
+            self.set_led(LED_GREEN)
+            self.set_tilt(0)
+            print("Kinect initialized successfully")
+        except:
+            self.kinect_available = False
+            print("Kinect not available, using webcam fallback")
+
+    def get_kinect_frame(self):
+        if not self.kinect_available:
+            return None
+        try:
+            # Get RGB frame from Kinect
+            (frame, _) = sync_get_video()
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            return cv2.imencode('.jpg', frame)[1].tobytes()
+        except:
+            self.kinect_available = False
+            return None
+
+    def set_tilt(self, degrees):
+        if self.kinect_available and -30 <= degrees <= 30:
+            tilt(self.device, degrees)
+            self.tilt_angle = degrees
+
+    def set_led(self, color):
+        if self.kinect_available:
+            self.current_led = color
+            freenect_set_led(color, self.device)
+
+    def release(self):
+        if self.kinect_available:
+            self.set_led(LED_RED)
+            tilt(self.device, 0)
+            self.device = None
+
+# Initialize Kinect controller
+kinect = KinectController()
+
+# Webcam fallback initialization
+webcam = None
+def init_webcam():
+    global webcam
+    if webcam is None or not webcam.isOpened():
+        webcam = cv2.VideoCapture(0)
+        webcam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        webcam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+def gen_frames():
+    while True:
+        # Try Kinect first
+        frame = kinect.get_kinect_frame()
+        
         if frame:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
         else:
-            # Kinect not connected or failed to get frame, fallback to default camera
-            success, fallback_frame = camera.read()
-            if success:
-                _, buffer = cv2.imencode('.jpg', fallback_frame)
+            # Fallback to webcam
+            try:
+                init_webcam()
+                success, frame = webcam.read()
+                if not success:
+                    raise RuntimeError("Webcam read failed")
+                
+                _, buffer = cv2.imencode('.jpg', frame)
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+            except:
+                print("Both Kinect and webcam failed")
+                time.sleep(1)
 
 @app.route('/video_feed')
 def video_feed():
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+# Kinect Control Endpoints
+@app.route('/tilt/<int:angle>')
+def set_tilt(angle):
+    if kinect.kinect_available:
+        kinect.set_tilt(angle)
+        return jsonify(status="success", tilt_angle=kinect.tilt_angle)
+    return jsonify(status="error", message="Kinect unavailable")
+
+@app.route('/led/<color>')
+def set_led(color):
+    if kinect.kinect_available:
+        color_map = {
+            'green': LED_GREEN,
+            'red': LED_RED,
+            'off': LED_OFF
+        }
+        kinect.set_led(color_map.get(color, LED_GREEN))
+        return jsonify(status="success", led_color=color)
+    return jsonify(status="error", message="Kinect unavailable")
 # ================= WebSocket Handlers =================
 @socketio.on('connect')
 def handle_connect():
@@ -222,4 +362,4 @@ def control_dashboard():
 
 # ================= Main Execution =================
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True)
