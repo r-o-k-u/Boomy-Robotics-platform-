@@ -1,211 +1,523 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="utf-8">
-  <title>Rover Control Center</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.3.0/raphael.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/justgage/1.4.0/justgage.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.5.0/dist/socket.io.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boomy</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+    <style>
+        :root {
+            --primary: #1a2b3c;
+            --secondary: #2ecc71;
+            --accent: #3498db;
+            --danger: #e74c3c;
+            --text: #ecf0f1;
+            --bg: #121a21;
+            --card-bg: rgba(255, 255, 255, 0.05);
+        }
 
-  <style>
-    .dashboard-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 1rem;
-      padding: 1rem;
-    }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-    .sensor-card,
-    .motor-control {
-      background: #f8f9fa;
-      border-radius: 10px;
-      padding: 1rem;
-    }
+        body {
+            font-family: 'Roboto', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            grid-template-rows: auto 1fr;
+            gap: 1rem;
+            padding: 1rem;
+        }
 
-    .motor-control {
-      background: #e9ecef;
-    }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            grid-column: 1 / -1;
+        }
 
-    .gauge-container {
-      width: 150px;
-      height: 150px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
+        .map-container {
+            height: 400px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
 
-    .channel-meter {
-      height: 25px;
-      background: #dee2e6;
-      border-radius: 12px;
-      overflow: hidden;
-    }
-  </style>
+        .telemetry-panel {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .video-feed {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000; 
+            max-height: 480px;
+        }
+
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .telemetry-card {
+            background: var(--card-bg);
+            padding: 1rem;
+            border-radius: 8px;
+            transition: transform 0.2s;
+        }
+
+        .telemetry-card:hover {
+            transform: translateY(-3px);
+        }
+
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            padding: 1rem;
+            background: var(--card-bg);
+            border-radius: 12px;
+            width: 100%;
+        }
+
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 0.5rem 1rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        .connection-status {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #7f8c8d;
+        }
+
+        .status-dot.connected {
+            background: #2ecc71;
+            animation: pulse 1.5s infinite;
+        }
+
+
+        .joystick-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 180px;
+        }
+
+        .virtual-joystick {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            position: relative;
+            touch-action: none;
+        }
+
+        .button-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
+        button {
+            background: var(--secondary);
+            color: white;
+            border: none;
+            padding: 0.8rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        button.danger {
+            background: var(--danger);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        @media (max-width: 768px) {
+            body {
+                grid-template-columns: 1fr;
+            }
+            
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .drive-indicator {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--card-bg);
+            border-radius: 12px;
+            margin-top: 30px;
+        }
+
+        .wheel-status {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .gps-indicator {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            transition: background-color 0.3s;
+        }
+        
+        .gps-source-serial { background: #2ecc7055; }
+        .gps-source-ip_geolocation { background: #3498db55; }
+        .gps-source-manual { background: #9b59b655; }
+        .gps-source-default { background: #e74c3c55; }
+    </style>
 </head>
-
 <body>
-  <div class="dashboard-grid">
-    <div class="sensor-card">
-      <h4>Kinect Vision Feed</h4>
-      <img src="/video_feed" class="img-fluid">
+    <div class="dashboard">
+        <div class="map-container" id="map"></div>
+        <div class="video-feed">
+            <img src="/video_feed" alt="Live Feed" class="video-stream">
+            <div class="video-overlay">
+                <div class="gps-indicator" id="gps-source">GPS: Acquiring...</div>
+                <div class="altitude-indicator">ALT: 15.2m</div>
+            </div>
+        </div>
     </div>
 
-    <div class="motor-control">
-      <h4>Motor Controls</h4>
-      <div class="row">
-        <div class="col">
-          <label>Left Motor</label>
-          <input type="range" class="form-range" id="leftMotor" min="-100" max="100">
-          <div class="progress">
-            <div id="leftMotorLoad" class="progress-bar"></div>
+    <div class="telemetry-panel">
+        <h2>Flight Telemetry</h2>
+        <div class="telemetry-grid" id="telemetry"></div>
+        <div class="drive-indicator">
+          <div class="wheel-status">
+              <div class="wheel" id="front-left-wheel">FL</div>
+              <div class="temperature">42°C</div>
           </div>
-        </div>
-        <div class="col">
-          <label>Right Motor</label>
-          <input type="range" class="form-range" id="rightMotor" min="-100" max="100">
-          <div class="progress">
-            <div id="rightMotorLoad" class="progress-bar"></div>
+          <div class="wheel-status">
+              <div class="wheel" id="front-right-wheel">FR</div>
+              <div class="temperature">40°C</div>
           </div>
-        </div>
+          <div class="wheel-status">
+              <div class="wheel" id="rear-left-wheel">RL</div>
+              <div class="temperature">38°C</div>
+          </div>
+          <div class="wheel-status">
+              <div class="wheel" id="rear-right-wheel">RR</div>
+              <div class="temperature">39°C</div>
+          </div>
       </div>
     </div>
 
-    <div class="sensor-card">
-      <h4>System Telemetry</h4>
-      <div class="row">
-        <div class="col">
-          <h5>Battery</h5>
-          <div class="gauge-container">
-            <div id="voltageGauge"></div>
-          </div>
-          <div class="gauge-container">
-            <div id="currentGauge"></div>
-          </div>
+    <div class="control-panel">
+        <div class="button-row">
+            <button class="success" onclick="sendCommand('activate')">🔋 Power On</button>
+            <button onclick="sendCommand('auto_mode')">🤖 Auto Mode</button>
+            <button class="danger" onclick="sendCommand('emergency_stop')">🛑 E-Stop</button>
         </div>
-        <div class="col">
-          <h5>IMU Data</h5>
-          <div id="imuVisualization"></div>
-          <div id="accelData"></div>
-          <div id="gyroData"></div>
+        <!-- Top Row - Joystick -->
+        <div class="joystick-container">
+            <div class="virtual-joystick" id="joystick"></div>
         </div>
-      </div>
+        
+        <!-- Bottom Row - Buttons -->
+       
     </div>
 
-    <div class="sensor-card">
-      <h4>Transmitter Channels</h4>
-      <div id="channelsDisplay"></div>
+    <div class="status-bar">
+        <div class="connection-status">
+            <div class="status-dot" :class="{ connected: isConnected }"></div>
+            <span>Connection Status</span>
+        </div>
+        <div class="gps-status" id="gps-status">
+            <span id="gps-coords">🌍 0.0000, 0.0000</span>
+        </div>
+        <div class="battery-status">🔋 78%</div>
+        <div class="signal-status">📶 Strong</div>
     </div>
 
 
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        const socket = io();
+        let lastUpdate = performance.now();
+        const UPDATE_INTERVAL = 50; // ms
 
-  </div>
-  <!-- <div class="dashboard-grid">
-    <div class="sensor-card">
-      <h4>IMU Visualization</h4>
-      <div id="imuVisualization" style="width: 300px; height: 300px;"></div>
-    </div>
-  </div> -->
+        // Initialize map with rover icon
+       // Update map initialization
+       let roverPosition = [-0.7172, 36.4310]; // Default position
+        const map = L.map('map').setView(roverPosition, 17);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        const roverIcon = L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/947/947680.png',
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
+        });
+        const roverMarker = L.marker([-0.702273, 36.426804], {icon: roverIcon}).addTo(map);
+        
+        // Add GPS accuracy circle
+        const accuracyCircle = L.circle(roverPosition, {
+            color: '#3498db',
+            fillColor: '#3498db30',
+            radius: 100
+        }).addTo(map);
+        
 
-  <script>
-    const socket = io();
-    let voltageGauge, currentGauge;
+        // Handle GPS updates
+        function updatePosition(lat, lon, source) {
+            console.log("updating position'",lat, lon, source)
+            roverMarker.setLatLng([lat, lon]);
+            map.panTo([lat, lon], {animate: true, duration: 0.5});
+            
+            // Update GPS source indicator
+            const sourceNames = {
+                serial: 'Rover GPS',
+                ip_geolocation: 'Network',
+                manual: 'Manual',
+                default: 'Default'
+            };
+            
+            const gpsIndicator = document.getElementById('gps-source');
+            gpsIndicator.textContent = `📍 ${sourceNames[source]}`;
+            gpsIndicator.className = `gps-indicator gps-source-${source}`;
+            gpsIndicator.style.animation = 'pulse 1s ease-in-out';
+            
+            // Update coordinates in status bar
+            document.getElementById('gps-coords').textContent = 
+                `🌍 ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+            
+            // Update accuracy circle based on source
+            const accuracyRadii = {
+                serial: 5,
+                ip_geolocation: 500,
+                manual: 50,
+                default: 1000
+            };
+            accuracyCircle.setRadius(accuracyRadii[source]);
+        }
+         // Socket event handlers
+         socket.on('gps_update', (data) => {
+            updatePosition(data.lat, data.lon, data.source);
+        });
+        // Differential drive control
+        let leftTrackPower = 0;
+        let rightTrackPower = 0;
 
-    document.addEventListener("DOMContentLoaded", () => {
-      voltageGauge = new JustGage({ id: "voltageGauge", value: 0, min: 0, max: 24, title: "Voltage (V)", label: "V", gaugeWidthScale: 0.6, levelColors: ["#ff0000", "#f9c802", "#a9d70b"] });
-      currentGauge = new JustGage({ id: "currentGauge", value: 0, min: 0, max: 10, title: "Current (A)", label: "A", gaugeWidthScale: 0.6, levelColors: ["#ff0000", "#f9c802", "#a9d70b"] });
-    });
+        function updateDriveSystem(x, y) {
+            const maxPower = 1.0;
+            const turnSensitivity = 0.7;
+            
+            // Differential drive calculations
+            leftTrackPower = Math.min(maxPower, Math.max(-maxPower, y + x * turnSensitivity));
+            rightTrackPower = Math.min(maxPower, Math.max(-maxPower, y - x * turnSensitivity));
+            
+            sendCommand(`drive:${leftTrackPower.toFixed(2)},${rightTrackPower.toFixed(2)}`);
+            updateWheelIndicators();
+        }
 
-    socket.on('sensor_update', data => {
-      voltageGauge.refresh(data.battery.voltage);
-      currentGauge.refresh(data.battery.current);
-      updateIMU(data.telemetry.imu);
-      document.getElementById('leftMotorLoad').style.width = `${Math.abs(data.telemetry.encoders.left / 10)}%`;
-      document.getElementById('rightMotorLoad').style.width = `${Math.abs(data.telemetry.encoders.right / 10)}%`;
-      updateChannels(data.channels);
-    });
+        function updateWheelIndicators() {
+            const wheels = {
+                'front-left-wheel': leftTrackPower,
+                'front-right-wheel': rightTrackPower,
+                'rear-left-wheel': leftTrackPower,
+                'rear-right-wheel': rightTrackPower
+            };
 
-    let lastIMUUpdate = 0;
+            Object.entries(wheels).forEach(([id, power]) => {
+                const wheel = document.getElementById(id);
+                wheel.style.color = power > 0 ? '#2ecc71' : '#e74c3c';
+                wheel.textContent = `${(Math.abs(power)*100).toFixed(0)}%`;
+            });
+        }
+        // Virtual joystick handling
+        const joystick = document.getElementById('joystick');
+        let isTouching = false;
+        
+        joystick.addEventListener('touchstart', handleJoystickStart);
+        joystick.addEventListener('touchmove', handleJoystickMove);
+        joystick.addEventListener('touchend', handleJoystickEnd);
+        
+        function handleJoystickStart(e) {
+            isTouching = true;
+            updateJoystickPosition(e);
+        }
 
-    function updateIMU(imuData) {
-      const now = performance.now();
-      if (now - lastIMUUpdate < 50) return; // Limit updates to 20 FPS
-      lastIMUUpdate = now;
+        function handleJoystickMove(e) {
+            if (isTouching) updateJoystickPosition(e);
+        }
 
-      // Update IMU text data
-      document.getElementById('accelData').textContent =
-        `Accel: X=${imuData.accel[0].toFixed(2)}, Y=${imuData.accel[1].toFixed(2)}, Z=${imuData.accel[2].toFixed(2)}`;
-      document.getElementById('gyroData').textContent =
-        `Gyro: X=${imuData.gyro[0].toFixed(2)}, Y=${imuData.gyro[1].toFixed(2)}, Z=${imuData.gyro[2].toFixed(2)}`;
+        function handleJoystickEnd() {
+            isTouching = false;
+            joystick.style.transform = 'translate(0, 0)';
+        }
 
-      // Update 3D Object Rotation
-      updateIMU3D(imuData.gyro);
-    }
+        function updateJoystickPosition(e) {
+            const rect = joystick.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left - centerX;
+            const y = touch.clientY - rect.top - centerY;
+            
+            const distance = Math.sqrt(x*x + y*y);
+            const maxDistance = centerX - 20;
+            const angle = Math.atan2(y, x);
+            
+            const limitedX = Math.cos(angle) * Math.min(distance, maxDistance);
+            const limitedY = Math.sin(angle) * Math.min(distance, maxDistance);
+            
+            joystick.style.transform = `translate(${limitedX}px, ${limitedY}px)`;            
+            updateDriveSystem(x, -y); // Invert Y axis for intuitive control
 
-    function updateChannels(channels) {
-      document.getElementById('channelsDisplay').innerHTML = channels.map((value, index) =>
-        `<div class="channel-meter"><div class="progress-bar" style="width: ${(value - 1000) / 10}%">CH${index + 1}: ${value}</div></div>`
-      ).join('');
-    }
+        }
 
-    document.getElementById('leftMotor').addEventListener('input', updateMotors);
-    document.getElementById('rightMotor').addEventListener('input', updateMotors);
+        // Optimized telemetry updates
+        const telemetryCache = new Map();
+        
+        function updateTelemetry(data) {
+            const now = performance.now();
+            if (now - lastUpdate < UPDATE_INTERVAL) return;
+            
+            Object.entries(data).forEach(([key, value]) => {
+                const element = document.getElementById(`telemetry-${key}`);
+                if (!element) return;
+                
+                const formattedValue = Number(value).toFixed(2);
+                if (telemetryCache.get(key) !== formattedValue) {
+                    element.textContent = formattedValue;
+                    element.parentElement.style.animation = 'highlight 0.5s';
+                    telemetryCache.set(key, formattedValue);
+                }
+            });
+            
+            lastUpdate = now;
+        }
 
-    function updateMotors() {
-      fetch('/api/control/motors', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ left: leftMotor.value, right: rightMotor.value })
-      });
-    }
+        // Command queue with priority system
+        const commandQueue = [];
+        let isSending = false;
+        
+        function sendCommand(cmd) {
+            const priority = cmd.startsWith('joystick') ? 0 : 1;
+            commandQueue.push({ cmd, priority });
+            commandQueue.sort((a, b) => a.priority - b.priority);
+            
+            if (!isSending) processQueue();
+        }
 
-    // Three.js Scene Setup
-    let scene, camera, renderer, cube;
+        function processQueue() {
+            isSending = true;
+            while (commandQueue.length > 0) {
+                const { cmd } = commandQueue.shift();
+                socket.emit('control_command', cmd);
+            }
+            isSending = false;
+        }
 
-    function initIMU3D() {
-      const container = document.getElementById('imuVisualization');
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-      camera.position.z = 3;
+        // Socket event handlers
+        socket.on('arduino_data', processTelemetryData);
+        socket.on('connect', updateConnectionStatus);
+        socket.on('disconnect', updateConnectionStatus);
 
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(container.clientWidth, container.clientHeight);
-      container.appendChild(renderer.domElement);
+        function processTelemetryData(data) {
+            try {
+            
+                
+                // Update other telemetry
+                Object.entries(data).forEach(([key, value]) => {
+                    const element = document.getElementById(`telemetry-${key}`);
+                    if(element) {
+                        const formattedValue = Number(value).toFixed(2);
+                        if(telemetryCache.get(key) !== formattedValue) {
+                            element.textContent = formattedValue;
+                            element.parentElement.style.animation = 'highlight 0.5s';
+                            telemetryCache.set(key, formattedValue);
+                        }
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Data parsing error:', error);
+            }
+        }
 
-      // Create a Cube (IMU Representation)
-      const geometry = new THREE.BoxGeometry();
-      const material = new THREE.MeshStandardMaterial({ color: 0x0077ff, wireframe: true });
-      cube = new THREE.Mesh(geometry, material);
-      scene.add(cube);
+        function updateConnectionStatus() {
+            const statusDot = document.querySelector('.status-dot');
+            statusDot.classList.toggle('connected', socket.connected);
+        }
 
-      // Light source
-      const light = new THREE.DirectionalLight(0xffffff, 1);
-      light.position.set(1, 1, 1).normalize();
-      scene.add(light);
+        // Initial telemetry setup
+        function createTelemetryCards() {
+            const container = document.getElementById('telemetry');
+            const metrics = [
+                'speed', 'voltage', 'current', 'motor_temp',
+                'distance', 'bearing', 'cpu_temp', 'signal'
+            ];
+            
+            metrics.forEach(metric => {
+                const card = document.createElement('div');
+                card.className = 'telemetry-card';
+                card.innerHTML = `
+                    <div class="metric-name">${metric.toUpperCase()}</div>
+                    <div class="metric-value" id="telemetry-${metric}">0.00</div>
+                `;
+                container.appendChild(card);
+            });
+        }
 
-      animateIMU();
-    }
 
-    // Smooth animation loop
-    function animateIMU() {
-      requestAnimationFrame(animateIMU);
-      renderer.render(scene, camera);
-    }
+        // Handle GPS updates
+        function updatePosition(lat, lon) {
+            roverMarker.setLatLng([lat, lon]);
+            map.panTo([lat, lon]);
+        }
+        createTelemetryCards();
 
-    // Update IMU 3D Rotation
-    function updateIMU3D(gyro) {
-      if (!cube) return;
-      cube.rotation.x = THREE.MathUtils.degToRad(gyro[0]);
-      cube.rotation.y = THREE.MathUtils.degToRad(gyro[1]);
-      cube.rotation.z = THREE.MathUtils.degToRad(gyro[2]);
-    }
-
-    // Initialize when page loads
-    document.addEventListener("DOMContentLoaded", initIMU3D);
-
-  </script>
+        // Initialize with default position
+        updatePosition(...roverPosition, 'default');
+         
+    </script>
 </body>
-
 </html>
