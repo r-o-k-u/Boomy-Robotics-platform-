@@ -35,7 +35,7 @@ pip install -r requirements-rpi.txt
 
 # to run
 ```
-python app/__init__.py --port=5001
+python app.py --port=5001
 
 ```
 ###

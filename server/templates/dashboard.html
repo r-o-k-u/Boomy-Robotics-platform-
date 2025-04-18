@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Boomy</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
         :root {
             --primary: #1a2b3c;
@@ -15,6 +16,7 @@
             --text: #ecf0f1;
             --bg: #121a21;
             --card-bg: rgba(255, 255, 255, 0.05);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         * {
@@ -30,7 +32,7 @@
             min-height: 100vh;
             display: grid;
             grid-template-columns: 1.5fr 1fr;
-            grid-template-rows: auto 1fr;
+            grid-template-rows: auto 1fr auto;
             gap: 1rem;
             padding: 1rem;
         }
@@ -43,10 +45,11 @@
         }
 
         .map-container {
-            height: 400px;
+            height: 500px;
             border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            position: relative;
         }
 
         .telemetry-panel {
@@ -54,14 +57,16 @@
             border-radius: 12px;
             padding: 1.5rem;
             backdrop-filter: blur(10px);
+            overflow: hidden;
         }
 
         .video-feed {
             position: relative;
             border-radius: 12px;
             overflow: hidden;
-            background: #000; 
+            background: #000;
             max-height: 480px;
+            aspect-ratio: 16/9;
         }
 
         .telemetry-grid {
@@ -75,43 +80,57 @@
             background: var(--card-bg);
             padding: 1rem;
             border-radius: 8px;
-            transition: transform 0.2s;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .telemetry-card::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--secondary);
+            opacity: 0;
+            transition: var(--transition);
         }
 
         .telemetry-card:hover {
-            transform: translateY(-3px);
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .telemetry-card:hover::after {
+            opacity: 1;
         }
 
         .control-panel {
             display: flex;
             flex-direction: column;
             gap: 1.5rem;
-            padding: 1rem;
+            padding: 1.5rem;
             background: var(--card-bg);
             border-radius: 12px;
             width: 100%;
         }
 
         .status-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 0.5rem 1rem;
+            grid-column: 1 / -1;
             display: flex;
             justify-content: space-between;
+            gap: 1rem;
+            padding: 0.75rem 1.5rem;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
         }
+
         .connection-status {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            background: rgba(0, 0, 0, 0.3);
         }
 
         .status-dot {
@@ -119,28 +138,32 @@
             height: 12px;
             border-radius: 50%;
             background: #7f8c8d;
+            transition: var(--transition);
         }
 
         .status-dot.connected {
             background: #2ecc71;
-            animation: pulse 1.5s infinite;
+            box-shadow: 0 0 8px #2ecc71;
         }
 
-
         .joystick-container {
+            position: relative;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 180px;
+            height: 200px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
         }
 
         .virtual-joystick {
-            width: 150px;
-            height: 150px;
+            width: 160px;
+            height: 160px;
             border-radius: 50%;
             background: rgba(255, 255, 255, 0.1);
             position: relative;
             touch-action: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
 
         .button-row {
@@ -153,72 +176,212 @@
             background: var(--secondary);
             color: white;
             border: none;
-            padding: 0.8rem;
+            padding: 1rem;
             border-radius: 8px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: var(--transition);
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
-            font-size: 0.9rem;
+            gap: 0.75rem;
+            font-size: 1rem;
+            font-weight: 500;
         }
 
-        button.danger {
-            background: var(--danger);
+        button:hover {
+            filter: brightness(1.1);
+            transform: translateY(-2px);
         }
 
         button:active {
             transform: scale(0.98);
         }
 
-        @media (max-width: 768px) {
-            body {
-                grid-template-columns: 1fr;
-            }
-            
-            .dashboard {
-                grid-template-columns: 1fr;
-            }
-        }
-
         .drive-indicator {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 1rem;
             padding: 1rem;
             background: var(--card-bg);
             border-radius: 12px;
-            margin-top: 30px;
+            margin-top: 1.5rem;
         }
 
-        .wheel-status {
+        .map-overlay {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .video-overlay {
+            position: absolute;
+            bottom: 1rem;
+            right: 1rem;
             display: flex;
             flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .telemetry-sparkline {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 30px;
+            opacity: 0.3;
+            transition: var(--transition);
+        }
+
+        .telemetry-card:hover .telemetry-sparkline {
+            opacity: 0.7;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                grid-template-columns: 1fr;
+                padding: 0.5rem;
+            }
+
+            .status-bar {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+        }
+
+        .context-menu {
+            position: fixed;
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 0.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 2000;
+            display: none;
+        }
+
+        .waypoint-marker {
+            filter: hue-rotate(120deg);
+        }
+
+        /* Receiver Channels Styling */
+        .channels-container {
+            display: grid;
+            gap: 12px;
+        }
+
+        .channel-item {
+            display: flex;
             align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
         }
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
+
+        .channel-label {
+            font-weight: 500;
+            width: 60px;
         }
-        
-        .gps-indicator {
-            padding: 4px 8px;
+
+        .channel-progress {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        progress {
+            width: 100%;
+            height: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        progress::-webkit-progress-value {
+            background-color: #4CAF50;
+            transition: width 0.3s ease;
+        }
+
+        .digital-indicator {
+            padding: 4px 12px;
+            border-radius: 15px;
+            background: #eee;
+            font-weight: bold;
+        }
+
+        .digital-indicator.active {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .transmitter-panel {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .channel-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .channel {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.5rem;
+            text-align: center;
+        }
+
+        .analog-bar {
+            height: 100px;
+            width: 20px;
+            background: #333;
             border-radius: 4px;
-            font-size: 0.9rem;
-            transition: background-color 0.3s;
+            margin: 0 auto;
+            position: relative;
+            overflow: hidden;
         }
-        
-        .gps-source-serial { background: #2ecc7055; }
-        .gps-source-ip_geolocation { background: #3498db55; }
-        .gps-source-manual { background: #9b59b655; }
-        .gps-source-default { background: #e74c3c55; }
+
+        .analog-fill {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: var(--secondary);
+            transition: height 0.3s ease;
+        }
+
+        .digital-led {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #444;
+            margin: 0 auto;
+            transition: background 0.2s ease;
+        }
+
+        .digital-led.active {
+            background: var(--secondary);
+            box-shadow: 0 0 8px var(--secondary);
+        }
     </style>
 </head>
+
 <body>
     <div class="dashboard">
         <div class="map-container" id="map"></div>
+
+
+        <div class="map-overlay">
+            <div>GPS Accuracy: <span id="gps-accuracy">0m</span></div>
+            <div>Satellites: <span id="gps-satellites">0</span></div>
+            <button onclick="clearPath()" style="margin-top: 0.5rem;">🧹 Clear Path</button>
+        </div>
         <div class="video-feed">
             <img src="/video_feed" alt="Live Feed" class="video-stream">
             <div class="video-overlay">
@@ -226,29 +389,33 @@
                 <div class="altitude-indicator">ALT: 15.2m</div>
             </div>
         </div>
+        <div class="transmitter-panel">
+            <h3>Receiver Channels</h3>
+            <div class="channel-container" id="channels-display"></div>
+        </div>
     </div>
 
     <div class="telemetry-panel">
         <h2>Flight Telemetry</h2>
         <div class="telemetry-grid" id="telemetry"></div>
         <div class="drive-indicator">
-          <div class="wheel-status">
-              <div class="wheel" id="front-left-wheel">FL</div>
-              <div class="temperature">42°C</div>
-          </div>
-          <div class="wheel-status">
-              <div class="wheel" id="front-right-wheel">FR</div>
-              <div class="temperature">40°C</div>
-          </div>
-          <div class="wheel-status">
-              <div class="wheel" id="rear-left-wheel">RL</div>
-              <div class="temperature">38°C</div>
-          </div>
-          <div class="wheel-status">
-              <div class="wheel" id="rear-right-wheel">RR</div>
-              <div class="temperature">39°C</div>
-          </div>
-      </div>
+            <div class="wheel-status">
+                <div class="wheel" id="front-left-wheel">FL</div>
+                <div class="temperature">42°C</div>
+            </div>
+            <div class="wheel-status">
+                <div class="wheel" id="front-right-wheel">FR</div>
+                <div class="temperature">40°C</div>
+            </div>
+            <div class="wheel-status">
+                <div class="wheel" id="rear-left-wheel">RL</div>
+                <div class="temperature">38°C</div>
+            </div>
+            <div class="wheel-status">
+                <div class="wheel" id="rear-right-wheel">RR</div>
+                <div class="temperature">39°C</div>
+            </div>
+        </div>
     </div>
 
     <div class="control-panel">
@@ -261,21 +428,20 @@
         <div class="joystick-container">
             <div class="virtual-joystick" id="joystick"></div>
         </div>
-        
+
         <!-- Bottom Row - Buttons -->
-       
+
     </div>
 
     <div class="status-bar">
         <div class="connection-status">
-            <div class="status-dot" :class="{ connected: isConnected }"></div>
-            <span>Connection Status</span>
+            <div class="status-dot connected"></div>
+            <span id="connection-text">Connected</span>
         </div>
-        <div class="gps-status" id="gps-status">
-            <span id="gps-coords">🌍 0.0000, 0.0000</span>
-        </div>
-        <div class="battery-status">🔋 78%</div>
-        <div class="signal-status">📶 Strong</div>
+        <div id="gps-coords">🌍 0.0000, 0.0000</div>
+        <div class="battery-status">🔋 <span id="battery-level">78%</span></div>
+        <div class="signal-status">📶 <span id="signal-strength">Strong</span></div>
+        <button onclick="toggleTheme()" style="padding: 0.25rem 0.75rem;">🌓 Theme</button>
     </div>
 
 
@@ -286,8 +452,8 @@
         const UPDATE_INTERVAL = 50; // ms
 
         // Initialize map with rover icon
-       // Update map initialization
-       let roverPosition = [-0.7172, 36.4310]; // Default position
+        // Update map initialization
+        let roverPosition = [-0.7172, 36.4310]; // Default position
         const map = L.map('map').setView(roverPosition, 17);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
         const roverIcon = L.icon({
@@ -295,22 +461,41 @@
             iconSize: [40, 40],
             iconAnchor: [20, 20]
         });
-        const roverMarker = L.marker([-0.702273, 36.426804], {icon: roverIcon}).addTo(map);
-        
+        const roverMarker = L.marker([-0.702273, 36.426804], { icon: roverIcon }).addTo(map);
+
         // Add GPS accuracy circle
         const accuracyCircle = L.circle(roverPosition, {
             color: '#3498db',
             fillColor: '#3498db30',
             radius: 100
         }).addTo(map);
-        
+
+        let waypoints = [];
+
+        function addWaypoint(lat, lng) {
+            const waypoint = L.marker([lat, lng], {
+                icon: roverIcon,
+                className: 'waypoint-marker'
+            }).addTo(map);
+            waypoints.push(waypoint);
+        }
+
+        map.on('contextmenu', (e) => {
+            addWaypoint(e.latlng.lat, e.latlng.lng);
+        });
+
+        function clearPath() {
+            gpsHistory.clearLayers();
+            waypoints.forEach(w => map.removeLayer(w));
+            waypoints = [];
+        }
 
         // Handle GPS updates
         function updatePosition(lat, lon, source) {
-            console.log("updating position'",lat, lon, source)
+            console.log("updating position'", lat, lon, source)
             roverMarker.setLatLng([lat, lon]);
-            map.panTo([lat, lon], {animate: true, duration: 0.5});
-            
+            map.panTo([lat, lon], { animate: true, duration: 0.5 });
+
             // Update GPS source indicator
             const sourceNames = {
                 serial: 'Rover GPS',
@@ -318,16 +503,16 @@
                 manual: 'Manual',
                 default: 'Default'
             };
-            
+
             const gpsIndicator = document.getElementById('gps-source');
             gpsIndicator.textContent = `📍 ${sourceNames[source]}`;
             gpsIndicator.className = `gps-indicator gps-source-${source}`;
             gpsIndicator.style.animation = 'pulse 1s ease-in-out';
-            
+
             // Update coordinates in status bar
-            document.getElementById('gps-coords').textContent = 
+            document.getElementById('gps-coords').textContent =
                 `🌍 ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-            
+
             // Update accuracy circle based on source
             const accuracyRadii = {
                 serial: 5,
@@ -337,8 +522,8 @@
             };
             accuracyCircle.setRadius(accuracyRadii[source]);
         }
-         // Socket event handlers
-         socket.on('gps_update', (data) => {
+        // Socket event handlers
+        socket.on('gps_update', (data) => {
             updatePosition(data.lat, data.lon, data.source);
         });
         // Differential drive control
@@ -348,11 +533,11 @@
         function updateDriveSystem(x, y) {
             const maxPower = 1.0;
             const turnSensitivity = 0.7;
-            
+
             // Differential drive calculations
             leftTrackPower = Math.min(maxPower, Math.max(-maxPower, y + x * turnSensitivity));
             rightTrackPower = Math.min(maxPower, Math.max(-maxPower, y - x * turnSensitivity));
-            
+
             sendCommand(`drive:${leftTrackPower.toFixed(2)},${rightTrackPower.toFixed(2)}`);
             updateWheelIndicators();
         }
@@ -368,17 +553,17 @@
             Object.entries(wheels).forEach(([id, power]) => {
                 const wheel = document.getElementById(id);
                 wheel.style.color = power > 0 ? '#2ecc71' : '#e74c3c';
-                wheel.textContent = `${(Math.abs(power)*100).toFixed(0)}%`;
+                wheel.textContent = `${(Math.abs(power) * 100).toFixed(0)}%`;
             });
         }
         // Virtual joystick handling
         const joystick = document.getElementById('joystick');
         let isTouching = false;
-        
+
         joystick.addEventListener('touchstart', handleJoystickStart);
         joystick.addEventListener('touchmove', handleJoystickMove);
         joystick.addEventListener('touchend', handleJoystickEnd);
-        
+
         function handleJoystickStart(e) {
             isTouching = true;
             updateJoystickPosition(e);
@@ -392,58 +577,52 @@
             isTouching = false;
             joystick.style.transform = 'translate(0, 0)';
         }
+        let joystickHistory = [];
+        const JOYSTICK_HISTORY_MAX = 50;
 
         function updateJoystickPosition(e) {
-            const rect = joystick.getBoundingClientRect();
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
-            const touch = e.touches[0];
-            const x = touch.clientX - rect.left - centerX;
-            const y = touch.clientY - rect.top - centerY;
-            
-            const distance = Math.sqrt(x*x + y*y);
-            const maxDistance = centerX - 20;
-            const angle = Math.atan2(y, x);
-            
-            const limitedX = Math.cos(angle) * Math.min(distance, maxDistance);
-            const limitedY = Math.sin(angle) * Math.min(distance, maxDistance);
-            
-            joystick.style.transform = `translate(${limitedX}px, ${limitedY}px)`;            
-            updateDriveSystem(x, -y); // Invert Y axis for intuitive control
-
+            // Existing code plus:
+            joystickHistory.push({ x, y, timestamp: Date.now() });
+            if (joystickHistory.length > JOYSTICK_HISTORY_MAX) joystickHistory.shift();
+            drawJoystickTrail();
         }
 
-        // Optimized telemetry updates
-        const telemetryCache = new Map();
-        
-        function updateTelemetry(data) {
-            const now = performance.now();
-            if (now - lastUpdate < UPDATE_INTERVAL) return;
-            
-            Object.entries(data).forEach(([key, value]) => {
-                const element = document.getElementById(`telemetry-${key}`);
-                if (!element) return;
-                
-                const formattedValue = Number(value).toFixed(2);
-                if (telemetryCache.get(key) !== formattedValue) {
-                    element.textContent = formattedValue;
-                    element.parentElement.style.animation = 'highlight 0.5s';
-                    telemetryCache.set(key, formattedValue);
-                }
+        function drawJoystickTrail() {
+            const canvas = document.getElementById('joystick-canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            joystickHistory.forEach((pos, i) => {
+                ctx.beginPath();
+                ctx.arc(pos.x + 80, pos.y + 80, 3, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(46, 204, 113, ${i / JOYSTICK_HISTORY_MAX})`;
+                ctx.fill();
             });
-            
-            lastUpdate = now;
         }
+        // Optimized telemetry updates
 
+        const telemetryHistory = new Map();
+
+        function updateTelemetry(data) {
+            Object.entries(data).forEach(([key, value]) => {
+                if (!telemetryHistory.has(key)) {
+                    telemetryHistory.set(key, []);
+                }
+                telemetryHistory.get(key).push(value);
+                if (telemetryHistory.get(key).length > 50) telemetryHistory.get(key).shift();
+
+                drawSparkline(key);
+            });
+        }
         // Command queue with priority system
         const commandQueue = [];
         let isSending = false;
-        
+
         function sendCommand(cmd) {
             const priority = cmd.startsWith('joystick') ? 0 : 1;
             commandQueue.push({ cmd, priority });
             commandQueue.sort((a, b) => a.priority - b.priority);
-            
+
             if (!isSending) processQueue();
         }
 
@@ -456,28 +635,34 @@
             isSending = false;
         }
 
+
+        // Initialize channel display
+        createChannelDisplay();
         // Socket event handlers
-        socket.on('arduino_data', processTelemetryData);
+        // socket.on('receiver_channels', processTelemetryData);
+        socket.on('receiver_channels', (data) => {
+            updateChannels(data);
+        });
         socket.on('connect', updateConnectionStatus);
         socket.on('disconnect', updateConnectionStatus);
 
         function processTelemetryData(data) {
+            console.log('Received telemetry data:', data);
             try {
-            
-                
+
                 // Update other telemetry
                 Object.entries(data).forEach(([key, value]) => {
                     const element = document.getElementById(`telemetry-${key}`);
-                    if(element) {
+                    if (element) {
                         const formattedValue = Number(value).toFixed(2);
-                        if(telemetryCache.get(key) !== formattedValue) {
+                        if (telemetryCache.get(key) !== formattedValue) {
                             element.textContent = formattedValue;
                             element.parentElement.style.animation = 'highlight 0.5s';
                             telemetryCache.set(key, formattedValue);
                         }
                     }
                 });
-                
+
             } catch (error) {
                 console.error('Data parsing error:', error);
             }
@@ -495,7 +680,7 @@
                 'speed', 'voltage', 'current', 'motor_temp',
                 'distance', 'bearing', 'cpu_temp', 'signal'
             ];
-            
+
             metrics.forEach(metric => {
                 const card = document.createElement('div');
                 card.className = 'telemetry-card';
@@ -517,7 +702,183 @@
 
         // Initialize with default position
         updatePosition(...roverPosition, 'default');
-         
+
+
+        // Enhanced GPS and Map Implementation
+        let gpsHistory = L.featureGroup().addTo(map);
+        let currentPath = null;
+
+        function updatePosition(lat, lon, accuracy, satellites, source) {
+            const newPos = [lat, lon];
+
+            // Update position marker
+            roverMarker.setLatLng(newPos);
+
+            // Update accuracy circle
+            accuracyCircle.setRadius(accuracy);
+            document.getElementById('gps-accuracy').textContent = `${Math.round(accuracy)}m`;
+            document.getElementById('gps-satellites').textContent = satellites;
+
+            // Smooth map transition
+            map.flyTo(newPos, map.getZoom(), {
+                animate: true,
+                duration: 0.5
+            });
+
+            // Update path history
+            if (currentPath) {
+                currentPath.addLatLng(newPos);
+            } else {
+                currentPath = L.polyline([newPos], { color: '#3498db' }).addTo(gpsHistory);
+            }
+
+            // Limit history to 100 points
+            if (currentPath.getLatLngs().length > 100) {
+                currentPath.removeLatLng(0);
+            }
+
+            // Update source indicator
+            const sourceNames = {
+                serial: 'Rover GPS',
+                ip_geolocation: 'Network',
+                manual: 'Manual',
+                default: 'Default'
+            };
+            document.getElementById('gps-source').textContent = `📍 ${sourceNames[source]}`;
+            document.getElementById('gps-coords').textContent = `🌍 ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+        }
+
+        function drawSparkline(metric) {
+            const canvas = document.getElementById(`sparkline-${metric}`);
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            const values = telemetryHistory.get(metric);
+            // Draw sparkline based on values
+        }
+
+        // Keyboard Shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === ' ') sendCommand('emergency_stop');
+            if (e.key === 'a') sendCommand('auto_mode');
+            if (e.key === 'p') sendCommand('activate');
+        });
+
+        // Connection Quality Monitor
+        let latencySamples = [];
+        function monitorConnection() {
+            const pingTime = Date.now();
+            socket.emit('ping', () => {
+                const latency = Date.now() - pingTime;
+                latencySamples.push(latency);
+                if (latencySamples.length > 10) latencySamples.shift();
+                updateConnectionQuality();
+            });
+            setTimeout(monitorConnection, 5000);
+        }
+
+        function updateConnectionQuality() {
+            const avgLatency = latencySamples.reduce((a, b) => a + b, 0) / latencySamples.length;
+            document.getElementById('signal-strength').textContent =
+                avgLatency < 100 ? 'Excellent' : avgLatency < 300 ? 'Good' : 'Poor';
+        }
+
+        // Initialize new features
+        monitorConnection();
+        document.body.classList.add(localStorage.getItem('theme') === 'light' ? 'light-theme' : 'dark-theme');
+
+        // Transmitter Channels Visualization
+        function createChannelDisplay() {
+            const container = document.getElementById('channels-display');
+
+            // Create analog channels (1-6)
+            for (let i = 1; i <= 6; i++) {
+                const channel = document.createElement('div');
+                channel.className = 'channel';
+                channel.innerHTML = `
+            <div>CH${i}</div>
+            <div class="analog-bar">
+                <div class="analog-fill" id="channel-${i}"></div>
+            </div>
+            <div class="channel-value">0%</div>
+        `;
+                container.appendChild(channel);
+            }
+
+            // Create digital channels (7-10)
+            for (let i = 7; i <= 10; i++) {
+                const channel = document.createElement('div');
+                channel.className = 'channel';
+                channel.innerHTML = `
+            <div>CH${i}</div>
+            <div class="digital-led" id="channel-${i}"></div>
+            <div class="channel-state">OFF</div>
+        `;
+                container.appendChild(channel);
+            }
+        }
+
+        // Handle channel data updates
+        function updateChannels(data) {
+            // Convert array data to object format if needed
+            const channelData = Array.isArray(data)
+                ? Object.fromEntries(data.map((v, i) => [`channel_${i + 1}`, v]))
+                : data;
+
+            Object.entries(channelData).forEach(([key, value]) => {
+                const channelNumber = parseInt(key.replace('channel_', ''), 10);
+                const element = document.getElementById(`channel-${channelNumber}`);
+
+                if (!element) {
+                    // console.warn(`Element not found for channel ${channelNumber}`);
+                    return;
+                }
+
+                const valueDisplay = element.parentElement.querySelector('.channel-value, .channel-state');
+
+                if (!valueDisplay) {
+                    console.warn(`Value display not found for channel ${channelNumber}`);
+                    return;
+                }
+
+                if (channelNumber <= 6) { // Analog channels
+                    const percentage = Math.min(100, Math.max(0, ((value - 1000) / 1000 * 100)));
+                    element.style.height = `${percentage.toFixed(0)}%`;
+                    valueDisplay.textContent = `${percentage.toFixed(0)}%`;
+                } else { // Digital channels
+                    const isActive = value > 1500;
+                    element.classList.toggle('active', isActive);
+                    valueDisplay.textContent = isActive ? 'ON' : 'OFF';
+                }
+            });
+        }
+
+
+
+
+
+
+        // Enhanced Connection Status
+        function updateConnectionStatus() {
+            const statusDot = document.querySelector('.status-dot');
+            const statusText = document.querySelector('.connection-status span');
+
+            statusDot.classList.toggle('connected', socket.connected);
+            statusText.textContent = socket.connected ?
+                'Connected' : 'Disconnected - Attempting to reconnect...';
+        }
+
+        // Add these to your existing socket listeners
+        socket.on('gps_data', (data) => {
+            updatePosition(data.lat, data.lon, data.accuracy, data.satellites, data.source);
+        });
+
+        // Initialize map with better defaults
+        L.control.scale({ imperial: false }).addTo(map);
+        map.createPane('accuracy');
+        map.getPane('accuracy').style.zIndex = 399;
+
     </script>
 </body>
+
 </html>
