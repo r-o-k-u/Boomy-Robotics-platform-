@@ -647,7 +647,7 @@
         socket.on('disconnect', updateConnectionStatus);
 
         function processTelemetryData(data) {
-            console.log('Received telemetry data:', data);
+            // console.log('Received telemetry data:', data);
             try {
 
                 // Update other telemetry
@@ -788,25 +788,59 @@
         document.body.classList.add(localStorage.getItem('theme') === 'light' ? 'light-theme' : 'dark-theme');
 
         // Transmitter Channels Visualization
-        function createChannelDisplay() {
-            const container = document.getElementById('channels-display');
+        // function createChannelDisplay() {
+        //     const container = document.getElementById('channels-display');
 
-            // Create analog channels (1-6)
-            for (let i = 1; i <= 6; i++) {
-                const channel = document.createElement('div');
-                channel.className = 'channel';
-                channel.innerHTML = `
-            <div>CH${i}</div>
-            <div class="analog-bar">
-                <div class="analog-fill" id="channel-${i}"></div>
-            </div>
-            <div class="channel-value">0%</div>
-        `;
-                container.appendChild(channel);
+        //     // Create analog channels (1-6)
+        //     for (let i = 1; i <= 10; i++) {
+        //         const channel = document.createElement('div');
+        //         channel.className = 'channel';
+        //         channel.innerHTML = `
+        //     <div>CH${i}</div>
+        //     <div class="analog-bar">
+        //         <div class="analog-fill" id="channel-${i}"></div>
+        //     </div>
+        //     <div class="channel-value">0%</div>
+        // `;
+        //         container.appendChild(channel);
+        //     }
+
+        //     // Create digital channels (7-10)
+        //     for (let i = 7; i <= 10; i++) {
+        //         const channel = document.createElement('div');
+        //         channel.className = 'channel';
+        //         channel.innerHTML = `
+        //     <div>CH${i}</div>
+        //     <div class="digital-led" id="channel-${i}"></div>
+        //     <div class="channel-state">OFF</div>
+        // `;
+        //         container.appendChild(channel);
+        //     }
+        // }
+
+        function createChannelDisplay() {
+            // console.log('Creating channel display...');
+            const container = document.getElementById('channels-display');
+            container.innerHTML = ''; // Clear existing content
+
+            // Create analog channels (1-4, 9-10)
+            for (let i = 1; i <= 10; i++) {
+                if (i <= 4 || i >= 9) {
+                    const channel = document.createElement('div');
+                    channel.className = 'channel';
+                    channel.innerHTML = `
+                <div>CH${i}</div>
+                <div class="analog-bar">
+                    <div class="analog-fill" id="channel-${i}"></div>
+                </div>
+                <div class="channel-value">0%</div>
+            `;
+                    container.appendChild(channel);
+                }
             }
 
-            // Create digital channels (7-10)
-            for (let i = 7; i <= 10; i++) {
+            // Create digital channels (5-8)
+            for (let i = 5; i <= 8; i++) {
                 const channel = document.createElement('div');
                 channel.className = 'channel';
                 channel.innerHTML = `
@@ -820,40 +854,45 @@
 
         // Handle channel data updates
         function updateChannels(data) {
-            // Convert array data to object format if needed
+            // Validate and normalize data format
             const channelData = Array.isArray(data)
-                ? Object.fromEntries(data.map((v, i) => [`channel_${i + 1}`, v]))
+                ? Object.fromEntries(data.map((v, i) => [`ch_${i + 1}`, v]))
                 : data;
 
             Object.entries(channelData).forEach(([key, value]) => {
-                const channelNumber = parseInt(key.replace('channel_', ''), 10);
-                const element = document.getElementById(`channel-${channelNumber}`);
-
-                if (!element) {
-                    // console.warn(`Element not found for channel ${channelNumber}`);
+                // console.log(`Processing channel data for ${key}: ${value}`);
+                // Safely extract channel number
+                const channelNumber = parseInt(key.match(/\d+/)?.[0], 10);
+                if (isNaN(channelNumber)) {
+                    console.warn(`Invalid channel key format: ${key}`);
                     return;
                 }
 
-                const valueDisplay = element.parentElement.querySelector('.channel-value, .channel-state');
+                const element = document.getElementById(`channel-${channelNumber}`);
+                if (!element) {
+                    console.warn(`Element not found for channel ${channelNumber}`);
+                    return;
+                }
+                // console.log("element", element, "value", value)
+                const valueDisplay = element.closest('.channel')?.querySelector('.channel-value, .channel-state');
 
                 if (!valueDisplay) {
                     console.warn(`Value display not found for channel ${channelNumber}`);
                     return;
                 }
 
-                if (channelNumber <= 6) { // Analog channels
-                    const percentage = Math.min(100, Math.max(0, ((value - 1000) / 1000 * 100)));
+                // Handle channel types based on number
+                if (channelNumber <= 4 || channelNumber >= 9) { // Analog channels
+                    const percentage = Math.min(100, Math.max(0, ((value + 100) / 200 * 100)));
                     element.style.height = `${percentage.toFixed(0)}%`;
                     valueDisplay.textContent = `${percentage.toFixed(0)}%`;
-                } else { // Digital channels
-                    const isActive = value > 1500;
+                } else { // Digital channels (5-8)
+                    const isActive = value > 0;
                     element.classList.toggle('active', isActive);
                     valueDisplay.textContent = isActive ? 'ON' : 'OFF';
                 }
             });
         }
-
-
 
 
 
