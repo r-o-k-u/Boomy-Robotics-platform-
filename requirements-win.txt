@@ -1,0 +1,2 @@
+# Additional for Windows Kinect
+pykinect2==0.1.0  # Microsoft Kinect SDK wrapper
