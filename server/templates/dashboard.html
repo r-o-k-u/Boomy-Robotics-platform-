@@ -397,23 +397,51 @@
 
     <div class="telemetry-panel">
         <h2>Flight Telemetry</h2>
-        <div class="telemetry-grid" id="telemetry"></div>
+        <div class="telemetry-grid" id="telemetry">
+            <div class="telemetry-item"><strong>Time:</strong> <span id="telemetry-timestamp">0</span> ms</div>
+            <div class="telemetry-item"><strong>Raw Channels:</strong>
+                <ul id="telemetry-raw" class="telemetry-list"></ul>
+            </div>
+            <div class="telemetry-item"><strong>Switches:</strong>
+                <ul id="telemetry-switch" class="telemetry-list"></ul>
+            </div>
+            <div class="telemetry-item"><strong>Lights:</strong> <span id="indicator-lights"
+                    class="indicator off"></span></div>
+            <div class="telemetry-item"><strong>E-Stop:</strong> <span id="indicator-estop"
+                    class="indicator off"></span></div>
+            <div class="telemetry-item"><strong>Brakes:</strong> <span id="indicator-brake"
+                    class="indicator off"></span></div>
+            <div class="telemetry-item"><strong>Motor 1:</strong>
+                <div class="motor-bar">
+                    <div id="motor-1-bar" class="fill"></div>
+                </div>
+                <span id="motor-1-value">0</span>
+            </div>
+            <div class="telemetry-item"><strong>Motor 2:</strong>
+                <div class="motor-bar">
+                    <div id="motor-2-bar" class="fill"></div>
+                </div>
+                <span id="motor-2-value">0</span>
+            </div>
+            <div class="telemetry-item"><strong>Status:</strong> <span id="status-text">IDLE</span></div>
+        </div>
+
         <div class="drive-indicator">
             <div class="wheel-status">
                 <div class="wheel" id="front-left-wheel">FL</div>
-                <div class="temperature">42°C</div>
+                <div class="temperature" id="temp-fl">42°C</div>
             </div>
             <div class="wheel-status">
                 <div class="wheel" id="front-right-wheel">FR</div>
-                <div class="temperature">40°C</div>
+                <div class="temperature" id="temp-fr">40°C</div>
             </div>
             <div class="wheel-status">
                 <div class="wheel" id="rear-left-wheel">RL</div>
-                <div class="temperature">38°C</div>
+                <div class="temperature" id="temp-rl">38°C</div>
             </div>
             <div class="wheel-status">
                 <div class="wheel" id="rear-right-wheel">RR</div>
-                <div class="temperature">39°C</div>
+                <div class="temperature" id="temp-rr">39°C</div>
             </div>
         </div>
     </div>
@@ -449,7 +477,7 @@
     <script>
         const socket = io();
         let lastUpdate = performance.now();
-        const UPDATE_INTERVAL = 50; // ms
+        const UPDATE_INTERVAL = 5; // ms
 
         // Initialize map with rover icon
         // Update map initialization
@@ -640,11 +668,110 @@
         createChannelDisplay();
         // Socket event handlers
         // socket.on('receiver_channels', processTelemetryData);
+        // Client-side JavaScript: handling telemetry data
         socket.on('receiver_channels', (data) => {
-            updateChannels(data);
+            console.log('Received receiver channels data:', data);
+            // Update individual telemetry sections
+            updateRawChannels(data.ch_raw);
+            updateSwitchStates(data.sw);
+            updateLightsIndicator(data.lights);
+            updateEStopIndicator(data.estop);
+            updateBrakeIndicator(data.brakes);
+            updateMotorSpeeds(data.motors);
+            updateStatusIndicator(data.status);
         });
         socket.on('connect', updateConnectionStatus);
         socket.on('disconnect', updateConnectionStatus);
+
+
+
+        // Update raw channels display (both analog & digital)
+        function updateRawChannels(chArray) {
+            console.log('Updating raw channels:', chArray);
+            chArray.forEach(obj => {
+                const [key, value] = Object.entries(obj)[0];
+                const channelNumber = parseInt(key.replace('ch', ''), 10);
+                const element = document.getElementById(`channel-${channelNumber}`);
+                const valueDisplay = element.closest('.channel')
+                    .querySelector('.channel-value, .channel-state');
+
+                if (channelNumber <= 4 || channelNumber >= 9) {
+                    // Analog
+                    const percent = Math.min(100, Math.max(0, ((value + 100) / 200 * 100)));
+                    element.style.height = `${percent.toFixed(0)}%`;
+                    valueDisplay.textContent = `${percent.toFixed(0)}%`;
+                } else {
+                    // Digital
+                    const isActive = value > 0;
+                    element.classList.toggle('active', isActive);
+                    valueDisplay.textContent = isActive ? 'ON' : 'OFF';
+                }
+            });
+        }
+
+        // Update switch states display in telemetry list
+        function updateSwitchStates(switchArray) {
+            const list = document.getElementById('telemetry-switch');
+            if (!list) return;
+            list.innerHTML = '';
+            switchArray.forEach((state, idx) => {
+                const chNum = idx + 5;
+                const item = document.createElement('li');
+                item.textContent = `CH${chNum}: ${state ? 'ON' : 'OFF'}`;
+                list.appendChild(item);
+            });
+        }
+
+        // Update lights relay indicators
+        function updateLightsIndicator(isOn) {
+            const icon = document.getElementById('indicator-lights');
+            if (!icon) return;
+            icon.classList.toggle('on', isOn);
+            icon.classList.toggle('off', !isOn);
+            icon.textContent = isOn ? 'ON' : 'OFF';
+        }
+
+        // Update E-Stop indicator
+        function updateEStopIndicator(isEStop) {
+            const icon = document.getElementById('indicator-estop');
+            if (!icon) return;
+            icon.classList.toggle('on', isEStop);
+            icon.classList.toggle('off', !isEStop);
+            icon.textContent = isEStop ? 'TRIGGERED' : 'CLEAR';
+        }
+
+        // Update Brake indicator
+        function updateBrakeIndicator(isBraking) {
+            const icon = document.getElementById('indicator-brake');
+            if (!icon) return;
+            icon.classList.toggle('on', isBraking);
+            icon.classList.toggle('off', !isBraking);
+            icon.textContent = isBraking ? 'ENGAGED' : 'RELEASED';
+        }
+
+        // Update motor speed bars and values
+        function updateMotorSpeeds([speed1, speed2]) {
+            const m1Bar = document.getElementById('motor-1-bar');
+            const m2Bar = document.getElementById('motor-2-bar');
+            const m1Val = document.getElementById('motor-1-value');
+            const m2Val = document.getElementById('motor-2-value');
+            if (m1Bar) m1Bar.style.width = `${mapSpeedToPercent(speed1)}%`;
+            if (m2Bar) m2Bar.style.width = `${mapSpeedToPercent(speed2)}%`;
+            if (m1Val) m1Val.textContent = `${speed1}`;
+            if (m2Val) m2Val.textContent = `${speed2}`;
+        }
+
+        // Map speed (-255 to 255) to percentage (0 to 100)
+        function mapSpeedToPercent(speed) {
+            return Math.round((speed + 255) / 510 * 100);
+        }
+
+        // Update overall status text
+        function updateStatusIndicator(status) {
+            const el = document.getElementById('status-text');
+            if (el) el.textContent = status;
+        }
+
 
         function processTelemetryData(data) {
             // console.log('Received telemetry data:', data);
