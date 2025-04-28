@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Boomy</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
         :root {
@@ -369,13 +370,135 @@
             background: var(--secondary);
             box-shadow: 0 0 8px var(--secondary);
         }
+
+        /* added */
+        .channel {
+            margin: 0.5rem;
+            padding: 0.5rem;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+
+        /* .analog-bar {
+            height: 20px;
+            background: #333;
+            border-radius: 3px;
+            overflow: hidden;
+        } */
+
+        .analog-fill {
+            height: 100%;
+            background: #3498db;
+            transition: width 0.2s ease;
+        }
+
+        .digital-led {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #e74c3c;
+            transition: background 0.2s ease;
+        }
+
+        .digital-led.active {
+            background: #2ecc71;
+        }
+
+        .switch-state {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.2rem 0;
+        }
+
+        .switch-state.active {
+            color: #2ecc71;
+        }
+
+        .switch-state.inactive {
+            color: #e74c3c;
+        }
+
+        .channel-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1rem;
+            padding: 1rem;
+        }
+
+        .channel {
+            background: #2c3e50;
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        /* .analog-bar {
+            height: 20px;
+            background: #34495e;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+            overflow: hidden;
+        } */
+
+        .analog-fill {
+            height: 100%;
+            background: #3498db;
+            transition: width 0.3s ease;
+        }
+
+        .digital-led {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #e74c3c;
+            margin: 0 auto;
+            transition: background 0.3s ease;
+        }
+
+        .digital-led.active {
+            background: #2ecc71;
+        }
+
+        #gps-coords {
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #2ecc71;
+            margin: 0 1rem;
+        }
+
+        .gps-indicator {
+            padding: 0.3rem 0.5rem;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .gps-source-serial {
+            color: #2ecc71;
+        }
+
+        .gps-source-ip_geolocation {
+            color: #f1c40f;
+        }
+
+        .gps-source-manual {
+            color: #9b59b6;
+        }
+
+        .threed-view {
+            position: relative;
+            border: 2px solid #34495e;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-left: 1rem;
+            background: #2c3e50;
+        }
     </style>
 </head>
 
 <body>
     <div class="dashboard">
         <div class="map-container" id="map"></div>
-
+        <div id="rover-3d-view" style="width: 400px; height: 300px;"></div>
 
         <div class="map-overlay">
             <div>GPS Accuracy: <span id="gps-accuracy">0m</span></div>
@@ -426,7 +549,7 @@
             <div class="telemetry-item"><strong>Status:</strong> <span id="status-text">IDLE</span></div>
         </div>
 
-        <div class="drive-indicator">
+        <!-- <div class="drive-indicator">
             <div class="wheel-status">
                 <div class="wheel" id="front-left-wheel">FL</div>
                 <div class="temperature" id="temp-fl">42°C</div>
@@ -443,7 +566,7 @@
                 <div class="wheel" id="rear-right-wheel">RR</div>
                 <div class="temperature" id="temp-rr">39°C</div>
             </div>
-        </div>
+        </div> -->
     </div>
 
     <div class="control-panel">
@@ -475,575 +598,541 @@
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
-        const socket = io();
-        let lastUpdate = performance.now();
-        const UPDATE_INTERVAL = 5; // ms
-
-        // Initialize map with rover icon
-        // Update map initialization
-        let roverPosition = [-0.7172, 36.4310]; // Default position
-        const map = L.map('map').setView(roverPosition, 17);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        const roverIcon = L.icon({
-            iconUrl: 'https://cdn-icons-png.flaticon.com/512/947/947680.png',
-            iconSize: [40, 40],
-            iconAnchor: [20, 20]
-        });
-        const roverMarker = L.marker([-0.702273, 36.426804], { icon: roverIcon }).addTo(map);
-
-        // Add GPS accuracy circle
-        const accuracyCircle = L.circle(roverPosition, {
-            color: '#3498db',
-            fillColor: '#3498db30',
-            radius: 100
-        }).addTo(map);
-
-        let waypoints = [];
-
-        function addWaypoint(lat, lng) {
-            const waypoint = L.marker([lat, lng], {
-                icon: roverIcon,
-                className: 'waypoint-marker'
-            }).addTo(map);
-            waypoints.push(waypoint);
-        }
-
-        map.on('contextmenu', (e) => {
-            addWaypoint(e.latlng.lat, e.latlng.lng);
-        });
-
-        function clearPath() {
-            gpsHistory.clearLayers();
-            waypoints.forEach(w => map.removeLayer(w));
-            waypoints = [];
-        }
-
-        // Handle GPS updates
-        function updatePosition(lat, lon, source) {
-            console.log("updating position'", lat, lon, source)
-            roverMarker.setLatLng([lat, lon]);
-            map.panTo([lat, lon], { animate: true, duration: 0.5 });
-
-            // Update GPS source indicator
-            const sourceNames = {
-                serial: 'Rover GPS',
-                ip_geolocation: 'Network',
-                manual: 'Manual',
-                default: 'Default'
-            };
-
-            const gpsIndicator = document.getElementById('gps-source');
-            gpsIndicator.textContent = `📍 ${sourceNames[source]}`;
-            gpsIndicator.className = `gps-indicator gps-source-${source}`;
-            gpsIndicator.style.animation = 'pulse 1s ease-in-out';
-
-            // Update coordinates in status bar
-            document.getElementById('gps-coords').textContent =
-                `🌍 ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-
-            // Update accuracy circle based on source
-            const accuracyRadii = {
+        // Configuration Constants
+        const CONFIG = {
+            UPDATE_INTERVAL: 5,          // Joystick update interval (ms)
+            JOYSTICK_HISTORY_MAX: 50,    // Trail points to keep
+            MAX_MOTOR_POWER: 1.0,        // Maximum motor power (100%)
+            GPS_ACCURACY: {              // GPS accuracy radii in meters
                 serial: 5,
                 ip_geolocation: 500,
                 manual: 50,
                 default: 1000
-            };
-            accuracyCircle.setRadius(accuracyRadii[source]);
-        }
-        // Socket event handlers
-        socket.on('gps_update', (data) => {
-            updatePosition(data.lat, data.lon, data.source);
-        });
-        // Differential drive control
-        let leftTrackPower = 0;
-        let rightTrackPower = 0;
-
-        function updateDriveSystem(x, y) {
-            const maxPower = 1.0;
-            const turnSensitivity = 0.7;
-
-            // Differential drive calculations
-            leftTrackPower = Math.min(maxPower, Math.max(-maxPower, y + x * turnSensitivity));
-            rightTrackPower = Math.min(maxPower, Math.max(-maxPower, y - x * turnSensitivity));
-
-            sendCommand(`drive:${leftTrackPower.toFixed(2)},${rightTrackPower.toFixed(2)}`);
-            updateWheelIndicators();
-        }
-
-        function updateWheelIndicators() {
-            const wheels = {
-                'front-left-wheel': leftTrackPower,
-                'front-right-wheel': rightTrackPower,
-                'rear-left-wheel': leftTrackPower,
-                'rear-right-wheel': rightTrackPower
-            };
-
-            Object.entries(wheels).forEach(([id, power]) => {
-                const wheel = document.getElementById(id);
-                wheel.style.color = power > 0 ? '#2ecc71' : '#e74c3c';
-                wheel.textContent = `${(Math.abs(power) * 100).toFixed(0)}%`;
-            });
-        }
-        // Virtual joystick handling
-        const joystick = document.getElementById('joystick');
-        let isTouching = false;
-
-        joystick.addEventListener('touchstart', handleJoystickStart);
-        joystick.addEventListener('touchmove', handleJoystickMove);
-        joystick.addEventListener('touchend', handleJoystickEnd);
-
-        function handleJoystickStart(e) {
-            isTouching = true;
-            updateJoystickPosition(e);
-        }
-
-        function handleJoystickMove(e) {
-            if (isTouching) updateJoystickPosition(e);
-        }
-
-        function handleJoystickEnd() {
-            isTouching = false;
-            joystick.style.transform = 'translate(0, 0)';
-        }
-        let joystickHistory = [];
-        const JOYSTICK_HISTORY_MAX = 50;
-
-        function updateJoystickPosition(e) {
-            // Existing code plus:
-            joystickHistory.push({ x, y, timestamp: Date.now() });
-            if (joystickHistory.length > JOYSTICK_HISTORY_MAX) joystickHistory.shift();
-            drawJoystickTrail();
-        }
-
-        function drawJoystickTrail() {
-            const canvas = document.getElementById('joystick-canvas');
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            joystickHistory.forEach((pos, i) => {
-                ctx.beginPath();
-                ctx.arc(pos.x + 80, pos.y + 80, 3, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(46, 204, 113, ${i / JOYSTICK_HISTORY_MAX})`;
-                ctx.fill();
-            });
-        }
-        // Optimized telemetry updates
-
-        const telemetryHistory = new Map();
-
-        function updateTelemetry(data) {
-            Object.entries(data).forEach(([key, value]) => {
-                if (!telemetryHistory.has(key)) {
-                    telemetryHistory.set(key, []);
-                }
-                telemetryHistory.get(key).push(value);
-                if (telemetryHistory.get(key).length > 50) telemetryHistory.get(key).shift();
-
-                drawSparkline(key);
-            });
-        }
-        // Command queue with priority system
-        const commandQueue = [];
-        let isSending = false;
-
-        function sendCommand(cmd) {
-            const priority = cmd.startsWith('joystick') ? 0 : 1;
-            commandQueue.push({ cmd, priority });
-            commandQueue.sort((a, b) => a.priority - b.priority);
-
-            if (!isSending) processQueue();
-        }
-
-        function processQueue() {
-            isSending = true;
-            while (commandQueue.length > 0) {
-                const { cmd } = commandQueue.shift();
-                socket.emit('control_command', cmd);
+            },
+            CHANNEL_CONFIG: {           // Channel type definitions
+                ANALOG: [1, 2, 3, 4, 9, 10],
+                DIGITAL: [5, 6, 7, 8]
             }
-            isSending = false;
-        }
+        };
 
 
-        // Initialize channel display
-        createChannelDisplay();
-        // Socket event handlers
-        // socket.on('receiver_channels', processTelemetryData);
-        // Client-side JavaScript: handling telemetry data
-        socket.on('receiver_channels', (data) => {
-            console.log('Received receiver channels data:', data);
-            // Update individual telemetry sections
-            updateRawChannels(data.ch_raw);
-            updateSwitchStates(data.sw);
-            updateLightsIndicator(data.lights);
-            updateEStopIndicator(data.estop);
-            updateBrakeIndicator(data.brakes);
-            updateMotorSpeeds(data.motors);
-            updateStatusIndicator(data.status);
-        });
-        socket.on('connect', updateConnectionStatus);
-        socket.on('disconnect', updateConnectionStatus);
+        // 3D Visualization System
+        const Rover3D = {
+            scene: null,
+            camera: null,
+            renderer: null,
+            rover: null,
+            ready: false,
+
+            init(containerId) {
+                // Scene setup
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, 400 / 300, 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
 
 
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0x404040);
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+                directionalLight.position.set(1, 1, 1);
+                this.scene.add(ambientLight, directionalLight);
 
-        // Update raw channels display (both analog & digital)
-        function updateRawChannels(chArray) {
-            console.log('Updating raw channels:', chArray);
-            chArray.forEach(obj => {
-                const [key, value] = Object.entries(obj)[0];
-                const channelNumber = parseInt(key.replace('ch', ''), 10);
-                const element = document.getElementById(`channel-${channelNumber}`);
-                const valueDisplay = element.closest('.channel')
-                    .querySelector('.channel-value, .channel-state');
+                // Create rover model
+                this.createRoverModel();
 
-                if (channelNumber <= 4 || channelNumber >= 9) {
-                    // Analog
-                    const percent = Math.min(100, Math.max(0, ((value + 100) / 200 * 100)));
-                    element.style.height = `${percent.toFixed(0)}%`;
-                    valueDisplay.textContent = `${percent.toFixed(0)}%`;
-                } else {
-                    // Digital
-                    const isActive = value > 0;
-                    element.classList.toggle('active', isActive);
-                    valueDisplay.textContent = isActive ? 'ON' : 'OFF';
+                // Camera position
+                this.camera.position.set(2, 2, 2);
+                this.camera.lookAt(0, 0, 0);
+
+                // Add to DOM
+                const container = document.getElementById(containerId);
+                this.renderer.setSize(400, 300);
+                container.appendChild(this.renderer.domElement);
+
+                // Start animation loop
+                this.animate();
+                this.ready = true;
+            },
+
+            createRoverModel() {
+                const roverGroup = new THREE.Group();
+
+                // Main body
+                const bodyGeometry = new THREE.BoxGeometry(1, 0.4, 0.5);
+                const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x2ecc71 });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.position.y = 0.2;
+
+                // Wheels
+                const wheelGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.1, 32);
+                const wheelMaterial = new THREE.MeshPhongMaterial({ color: 0x34495e });
+
+                const wheels = [];
+                for (let i = 0; i < 2; i++) {
+                    const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                    wheel.rotation.z = Math.PI / 2;
+                    wheel.position.x = i === 0 ? -0.6 : 0.6;
+                    wheel.position.y = 0.1;
+                    wheels.push(wheel);
                 }
-            });
-        }
 
-        // Update switch states display in telemetry list
-        function updateSwitchStates(switchArray) {
-            const list = document.getElementById('telemetry-switch');
-            if (!list) return;
-            list.innerHTML = '';
-            switchArray.forEach((state, idx) => {
-                const chNum = idx + 5;
-                const item = document.createElement('li');
-                item.textContent = `CH${chNum}: ${state ? 'ON' : 'OFF'}`;
-                list.appendChild(item);
-            });
-        }
+                roverGroup.add(body, ...wheels);
+                this.rover = roverGroup;
+                this.scene.add(roverGroup);
+            },
 
-        // Update lights relay indicators
-        function updateLightsIndicator(isOn) {
-            const icon = document.getElementById('indicator-lights');
-            if (!icon) return;
-            icon.classList.toggle('on', isOn);
-            icon.classList.toggle('off', !isOn);
-            icon.textContent = isOn ? 'ON' : 'OFF';
-        }
+            updateOrientation(roll, pitch) {
+                if (!this.ready || !this.rover) return;
 
-        // Update E-Stop indicator
-        function updateEStopIndicator(isEStop) {
-            const icon = document.getElementById('indicator-estop');
-            if (!icon) return;
-            icon.classList.toggle('on', isEStop);
-            icon.classList.toggle('off', !isEStop);
-            icon.textContent = isEStop ? 'TRIGGERED' : 'CLEAR';
-        }
+                // Convert degrees to radians
+                this.rover.rotation.z = THREE.MathUtils.degToRad(roll);
+                this.rover.rotation.x = THREE.MathUtils.degToRad(pitch);
+            },
 
-        // Update Brake indicator
-        function updateBrakeIndicator(isBraking) {
-            const icon = document.getElementById('indicator-brake');
-            if (!icon) return;
-            icon.classList.toggle('on', isBraking);
-            icon.classList.toggle('off', !isBraking);
-            icon.textContent = isBraking ? 'ENGAGED' : 'RELEASED';
-        }
+            updatePosition(accel) {
+                if (!this.ready || !this.rover || !this.rover.position) {
+                    console.warn("Rover model not initialized yet.");
+                    return; // Exit silently if not ready
+                }
 
-        // Update motor speed bars and values
-        function updateMotorSpeeds([speed1, speed2]) {
-            const m1Bar = document.getElementById('motor-1-bar');
-            const m2Bar = document.getElementById('motor-2-bar');
-            const m1Val = document.getElementById('motor-1-value');
-            const m2Val = document.getElementById('motor-2-value');
-            if (m1Bar) m1Bar.style.width = `${mapSpeedToPercent(speed1)}%`;
-            if (m2Bar) m2Bar.style.width = `${mapSpeedToPercent(speed2)}%`;
-            if (m1Val) m1Val.textContent = `${speed1}`;
-            if (m2Val) m2Val.textContent = `${speed2}`;
-        }
+                this.rover.position.x += accel.x * 0.01;
+                this.rover.position.y += accel.y * 0.01;
+                this.rover.position.z += accel.z * 0.01;
+            },
 
-        // Map speed (-255 to 255) to percentage (0 to 100)
-        function mapSpeedToPercent(speed) {
-            return Math.round((speed + 255) / 510 * 100);
-        }
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                this.renderer.render(this.scene, this.camera);
+            }
+        };
 
-        // Update overall status text
-        function updateStatusIndicator(status) {
-            const el = document.getElementById('status-text');
-            if (el) el.textContent = status;
-        }
+        // Core Application Instance
+        const RoverControl = {
+            // System State
+            state: {
+                connection: {
+                    connected: false,
+                    latency: []
+                },
+                position: {
+                    current: [-0.702273, 36.426804],  // Default position
+                    accuracy: 100,
+                    source: 'default'
+                },
+                drive: {
+                    leftPower: 0,
+                    rightPower: 0
+                },
+                telemetry: new Map(),
+                commandQueue: [],
+                isSending: false
+            },
+
+            // System Components
+            components: {
+                map: null,
+                roverMarker: null,
+                accuracyCircle: null,
+                waypoints: [],
+                joystickHistory: []
+            },
+
+            // UI Elements Cache
+            ui: {
+                indicators: {},
+                telemetryDisplays: {},
+                channelElements: {}
+            },
+
+            // Initialization Methods
+            init() {
+                console.log("initializing ....")
+                Rover3D.init('rover-3d-view');
+                this.initMap();
+                this.initSocket();
+                this.initUI();
+                this.initEventListeners();
+                this.startMonitoring();
+                this.ui.indicators = {
+                    lights: document.getElementById('indicator-lights') || console.error('Lights indicator not found'),
+                    estop: document.getElementById('indicator-estop') || console.error('E-Stop indicator not found'),
+                    brake: document.getElementById('indicator-brake') || console.error('Brake indicator not found'),
+                    gpsSource: document.getElementById('gps-source') || console.error('GPS source indicator not found'),
+                    gpsCoords: document.getElementById('gps-coords') || console.error('GPS coordinates display not found')
+                };
+                if (!this.ui.indicators.gpsCoords) {
+                    console.error('GPS coordinates display element not found!');
+                    // Create fallback element if missing
+                    const fallback = document.createElement('div');
+                    fallback.id = 'gps-coords';
+                    document.querySelector('.status-bar').appendChild(fallback);
+                    this.ui.indicators.gpsCoords = fallback;
+                }
+                
+            },
+
+            // Map Initialization
+            initMap() {
+                // Create base map
+                this.components.map = L.map('map').setView(
+                    this.state.position.current,
+                    17
+                );
+
+                // Add tile layer
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
+                    .addTo(this.components.map);
+
+                // Create rover marker
+                const roverIcon = L.icon({
+                    iconUrl: 'https://cdn-icons-png.flaticon.com/512/947/947680.png',
+                    iconSize: [40, 40],
+                    iconAnchor: [20, 20]
+                });
+
+                this.components.roverMarker = L.marker(
+                    this.state.position.current,
+                    { icon: roverIcon }
+                ).addTo(this.components.map);
+
+                // Initialize accuracy circle
+                this.components.accuracyCircle = L.circle(
+                    this.state.position.current, {
+                    color: '#3498db',
+                    fillColor: '#3498db30',
+                    radius: this.state.position.accuracy
+                }).addTo(this.components.map);
+
+                // Configure map controls
+                L.control.scale({ imperial: false }).addTo(this.components.map);
+            },
+
+            // WebSocket Initialization
+            initSocket() {
+                this.socket = io();
+                this.registerSocketHandlers();
+            },
+
+            // UI Initialization
+            initUI() {
+                // Cache DOM elements
+                this.ui.indicators = {
+                    lights: document.getElementById('indicator-lights'),
+                    estop: document.getElementById('indicator-estop'),
+                    brake: document.getElementById('indicator-brake'),
+                    gpsSource: document.getElementById('gps-source'),
+                    gpsCoords: document.getElementById('gps-coords')
+                };
+
+                // Initialize telemetry displays
+                this.createTelemetryCards();
+                this.createChannelDisplay();
+
+                // Initialize joystick canvas
+                this.joystickCanvas = document.getElementById('joystick-canvas');
+                this.joystickContext = this.joystickCanvas.getContext('2d');
+            },
+
+            // Event Listeners
+            initEventListeners() {
+                // Map interactions
+                this.components.map.on('contextmenu', this.handleMapRightClick.bind(this));
+
+                // Joystick controls
+                const joystick = document.getElementById('joystick');
+                joystick.addEventListener('touchstart', this.handleJoystickStart.bind(this));
+                joystick.addEventListener('touchmove', this.handleJoystickMove.bind(this));
+                joystick.addEventListener('touchend', this.handleJoystickEnd.bind(this));
+
+                // Keyboard controls
+                document.addEventListener('keydown', this.handleKeyboardShortcuts.bind(this));
+            },
+
+            // Socket Event Handlers
+            registerSocketHandlers() {
+                // Connection status
+                this.socket.on('connect', () => this.updateConnectionStatus(true));
+                this.socket.on('disconnect', () => this.updateConnectionStatus(false));
+
+                // Data updates
+                this.socket.on('gps_update', this.handleGPSUpdate.bind(this));
+                this.socket.on('receiver_channels', this.handleChannelData.bind(this));
 
 
-        function processTelemetryData(data) {
-            // console.log('Received telemetry data:', data);
-            try {
+                this.socket.on('telemetry', this.handleTelemetryUpdate.bind(this));
+            },
 
-                // Update other telemetry
-                Object.entries(data).forEach(([key, value]) => {
-                    const element = document.getElementById(`telemetry-${key}`);
-                    if (element) {
-                        const formattedValue = Number(value).toFixed(2);
-                        if (telemetryCache.get(key) !== formattedValue) {
-                            element.textContent = formattedValue;
-                            element.parentElement.style.animation = 'highlight 0.5s';
-                            telemetryCache.set(key, formattedValue);
+            // GPS Handling
+            handleGPSUpdate(data) {
+                this.validatePosition(data);
+                this.updatePositionDisplay(data);
+                this.updateMapElements(data);
+            },
+
+            validatePosition({ lat, lon }) {
+                if (isNaN(lat)) throw new Error(`Invalid latitude: ${lat}`);
+                if (isNaN(lon)) throw new Error(`Invalid longitude: ${lon}`);
+            },
+
+            updatePositionDisplay({ lat, lon, source }) {
+                // Safe coordinate update
+                try {
+                    if (this.ui.indicators.gpsCoords) {
+                        this.ui.indicators.gpsCoords.textContent =
+                            `🌍 ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                    }
+                } catch (error) {
+                    console.error('Failed to update GPS display:', error);
+                }
+
+                // Update source indicator with null check
+                if (this.ui.indicators.gpsSource) {
+                    const sourceNames = {
+                        serial: 'Rover GPS',
+                        ip_geolocation: 'Network',
+                        manual: 'Manual',
+                        default: 'Default'
+                    };
+                    this.ui.indicators.gpsSource.textContent = `📍 ${sourceNames[source]}`;
+                    this.ui.indicators.gpsSource.className = `gps-source-${source}`;
+                }
+            },
+            updateMapElements({ lat, lon, source }) {
+                // Update marker position
+                this.components.roverMarker.setLatLng([lat, lon]);
+                this.components.map.panTo([lat, lon], { animate: true, duration: 0.5 });
+
+                // Update accuracy circle
+                const accuracy = CONFIG.GPS_ACCURACY[source] || 1000;
+                this.components.accuracyCircle.setRadius(accuracy);
+            },
+
+            createChannelDisplay() {
+                const container = document.getElementById('channels-display');
+                if (!container) {
+                    console.error('Channel container not found');
+                    return;
+                }
+                container.innerHTML = '';
+
+                // Create all 10 channels dynamically
+                for (let channel = 1; channel <= 10; channel++) {
+                    const isAnalog = CONFIG.CHANNEL_CONFIG.ANALOG.includes(channel);
+
+                    const channelDiv = document.createElement('div');
+                    channelDiv.className = `channel ${isAnalog ? 'analog' : 'digital'}`;
+                    channelDiv.innerHTML = `
+            <div class="channel-label">CH${channel}</div>
+            ${isAnalog ? `
+                <div class="analog-bar">
+                    <div class="analog-fill" id="channel-${channel}"></div>
+                </div>
+                <div class="channel-value">0%</div>
+            ` : `
+                <div class="digital-led" id="channel-${channel}"></div>
+                <div class="channel-state">OFF</div>
+            `}
+        `;
+
+                    container.appendChild(channelDiv);
+                }
+            },
+
+            // Channel Data Handling
+            handleChannelData(data) {
+                try {
+                    if (!data) {
+                        console.error('Received empty channel data');
+                        return;
+                    }
+
+                    // Validate data structure
+                    if (data.ch_raw) this.updateRawChannels(data.ch_raw);
+                    if (data.sw) this.updateSwitchStates(data.sw);
+                    if (data.lights !== undefined && data.estop !== undefined && data.brakes !== undefined) {
+                        this.updateSystemIndicators(data);
+                    }
+                    if (data.motors) this.updateMotorDisplays(data.motors);
+                    if (data.orientation) {
+                        Rover3D.updateOrientation(
+                            data.orientation.roll,
+                            data.orientation.pitch
+                        );
+                    }
+                    // if (data.accel) {
+                    //     Rover3D.updatePosition(data.accel);
+                    // }
+                } catch (error) {
+                    console.error('Error processing channel data:', error);
+                }
+            },
+
+            updateSystemIndicators({ lights, estop, brakes }) {
+                const updateIndicator = (element, state, activeText, inactiveText) => {
+                    if (!element) return;
+                    element.classList.toggle('on', state);
+                    element.textContent = state ? activeText : inactiveText;
+                };
+
+                updateIndicator(this.ui.indicators.lights, lights, 'LIGHTS ON', 'LIGHTS OFF');
+                updateIndicator(this.ui.indicators.estop, estop, 'ESTOP ACTIVE', 'ESTOP CLEAR');
+                updateIndicator(this.ui.indicators.brake, brakes, 'BRAKE ENGAGED', 'BRAKE RELEASED');
+            },
+
+            // Motor Control Logic
+            calculateMotorPowers(x, y) {
+                const turnSensitivity = 0.7;
+                const clamp = (v) => Math.min(CONFIG.MAX_MOTOR_POWER,
+                    Math.max(-CONFIG.MAX_MOTOR_POWER, v));
+
+                return {
+                    left: clamp(y + x * turnSensitivity),
+                    right: clamp(y - x * turnSensitivity)
+                };
+            },
+
+            // Command Queue Management
+            sendCommand(command) {
+                const priority = command.startsWith('joystick') ? 0 : 1;
+                this.state.commandQueue.push({ command, priority });
+                this.state.commandQueue.sort((a, b) => a.priority - b.priority);
+
+                if (!this.state.isSending) this.processCommandQueue();
+            },
+
+            processCommandQueue() {
+                this.state.isSending = true;
+                while (this.state.commandQueue.length > 0) {
+                    const { command } = this.state.commandQueue.shift();
+                    this.socket.emit('control_command', command);
+                }
+                this.state.isSending = false;
+            },
+
+            // Additional methods for UI updates, telemetry handling, 
+            // and event processing would follow similar patterns...
+
+            updateConnectionStatus() {
+                const statusDot = document.querySelector('.status-dot');
+                statusDot.classList.toggle('connected', this.socket.connected);
+            },
+
+            updateRawChannels(chArray) {
+                // console.log('Updating raw channels:', chArray);
+                chArray.forEach(obj => {
+                    const [key, value] = Object.entries(obj)[0];
+                    const channelNumber = parseInt(key.replace('ch', ''), 10);
+
+                    // Validate channel number
+                    if (isNaN(channelNumber) || channelNumber < 1 || channelNumber > 10) {
+                        console.error('Invalid channel number:', key);
+                        return;
+                    }
+
+                    const element = document.getElementById(`channel-${channelNumber}`);
+                    if (!element) {
+                        console.warn(`Channel element ${channelNumber} not found - recreating display`);
+                        this.createChannelDisplay();
+                        return;
+                    }
+                    // Find parent channel container
+                    const channelContainer = element.closest('.channel');
+                    if (!channelContainer) {
+                        console.error('Channel container not found for element');
+                        return;
+                    }
+
+                    const valueDisplay = channelContainer.querySelector('.channel-value, .channel-state');
+
+                    if (channelNumber <= 4 || channelNumber >= 9) {
+                        // Analog channel handling
+                        const percent = Math.min(100, Math.max(0, ((value + 100) / 200 * 100)));
+                        element.style.height = `${percent.toFixed(0)}%`;
+                        if (valueDisplay) {
+                            valueDisplay.textContent = `${percent.toFixed(0)}%`;
+                        }
+                    } else {
+                        // Digital channel handling
+                        const isActive = value > 0;
+                        element.classList.toggle('active', isActive);
+                        if (valueDisplay) {
+                            valueDisplay.textContent = isActive ? 'ON' : 'OFF';
                         }
                     }
                 });
+            },
+            updateSwitchStates(switchStates) {
+                try {
+                    const list = document.getElementById('telemetry-switch');
+                    if (!list) {
+                        console.error('Switch states container not found');
+                        return;
+                    }
 
-            } catch (error) {
-                console.error('Data parsing error:', error);
+                    // Clear existing items safely
+                    while (list.firstChild) {
+                        list.removeChild(list.firstChild);
+                    }
+
+                    // Create new list items with error checking
+                    if (Array.isArray(switchStates)) {
+                        switchStates.forEach((state, index) => {
+                            const channelNumber = index + 5;
+                            const listItem = document.createElement('li');
+                            listItem.className = `switch-state ${state ? 'active' : 'inactive'}`;
+                            listItem.innerHTML = `
+                                <span class="channel-number">CH${channelNumber}</span>
+                                <span class="switch-status">${state ? 'ON' : 'OFF'}</span>
+                            `;
+                            list.appendChild(listItem);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error updating switch states:', error);
+                }
+            },
+
+            updateMotorDisplays(motorSpeeds) {
+                try {
+                    if (!Array.isArray(motorSpeeds) || motorSpeeds.length < 2) {
+                        console.error('Invalid motor data:', motorSpeeds);
+                        return;
+                    }
+
+                    const updateMotor = (motorId, speed) => {
+                        const bar = document.getElementById(`motor-${motorId}-bar`);
+                        const value = document.getElementById(`motor-${motorId}-value`);
+
+                        if (bar && value) {
+                            const percentage = this.mapSpeedToPercent(speed);
+                            bar.style.width = `${percentage}%`;
+                            value.textContent = `${Math.abs(speed)}`;
+                            value.style.color = speed > 0 ? '#2ecc71' : '#e74c3c';
+                        }
+                    };
+
+                    updateMotor(1, motorSpeeds[0]);
+                    updateMotor(2, motorSpeeds[1]);
+                } catch (error) {
+                    console.error('Error updating motor displays:', error);
+                }
+            },
+
+            mapSpeedToPercent(speed) {
+                return Math.round(
+                    (Math.min(255, Math.max(-255, speed) + 255) / 510 * 100
+                    ))
+            },
+            // Initialization
+            startMonitoring() {
+                setInterval(this.monitorConnection.bind(this), 5000);
             }
-        }
-
-        function updateConnectionStatus() {
-            const statusDot = document.querySelector('.status-dot');
-            statusDot.classList.toggle('connected', socket.connected);
-        }
-
-        // Initial telemetry setup
-        function createTelemetryCards() {
-            const container = document.getElementById('telemetry');
-            const metrics = [
-                'speed', 'voltage', 'current', 'motor_temp',
-                'distance', 'bearing', 'cpu_temp', 'signal'
-            ];
-
-            metrics.forEach(metric => {
-                const card = document.createElement('div');
-                card.className = 'telemetry-card';
-                card.innerHTML = `
-                    <div class="metric-name">${metric.toUpperCase()}</div>
-                    <div class="metric-value" id="telemetry-${metric}">0.00</div>
-                `;
-                container.appendChild(card);
-            });
-        }
+        };
 
 
-        // Handle GPS updates
-        function updatePosition(lat, lon) {
-            roverMarker.setLatLng([lat, lon]);
-            map.panTo([lat, lon]);
-        }
-        createTelemetryCards();
-
-        // Initialize with default position
-        updatePosition(...roverPosition, 'default');
-
-
-        // Enhanced GPS and Map Implementation
-        let gpsHistory = L.featureGroup().addTo(map);
-        let currentPath = null;
-
-        function updatePosition(lat, lon, accuracy, satellites, source) {
-            const newPos = [lat, lon];
-
-            // Update position marker
-            roverMarker.setLatLng(newPos);
-
-            // Update accuracy circle
-            accuracyCircle.setRadius(accuracy);
-            document.getElementById('gps-accuracy').textContent = `${Math.round(accuracy)}m`;
-            document.getElementById('gps-satellites').textContent = satellites;
-
-            // Smooth map transition
-            map.flyTo(newPos, map.getZoom(), {
-                animate: true,
-                duration: 0.5
-            });
-
-            // Update path history
-            if (currentPath) {
-                currentPath.addLatLng(newPos);
-            } else {
-                currentPath = L.polyline([newPos], { color: '#3498db' }).addTo(gpsHistory);
-            }
-
-            // Limit history to 100 points
-            if (currentPath.getLatLngs().length > 100) {
-                currentPath.removeLatLng(0);
-            }
-
-            // Update source indicator
-            const sourceNames = {
-                serial: 'Rover GPS',
-                ip_geolocation: 'Network',
-                manual: 'Manual',
-                default: 'Default'
-            };
-            document.getElementById('gps-source').textContent = `📍 ${sourceNames[source]}`;
-            document.getElementById('gps-coords').textContent = `🌍 ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-        }
-
-        function drawSparkline(metric) {
-            const canvas = document.getElementById(`sparkline-${metric}`);
-            if (!canvas) return;
-
-            const ctx = canvas.getContext('2d');
-            const values = telemetryHistory.get(metric);
-            // Draw sparkline based on values
-        }
-
-        // Keyboard Shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.key === ' ') sendCommand('emergency_stop');
-            if (e.key === 'a') sendCommand('auto_mode');
-            if (e.key === 'p') sendCommand('activate');
+        document.addEventListener('DOMContentLoaded', () => {
+            RoverControl.init();
         });
-
-        // Connection Quality Monitor
-        let latencySamples = [];
-        function monitorConnection() {
-            const pingTime = Date.now();
-            socket.emit('ping', () => {
-                const latency = Date.now() - pingTime;
-                latencySamples.push(latency);
-                if (latencySamples.length > 10) latencySamples.shift();
-                updateConnectionQuality();
-            });
-            setTimeout(monitorConnection, 5000);
-        }
-
-        function updateConnectionQuality() {
-            const avgLatency = latencySamples.reduce((a, b) => a + b, 0) / latencySamples.length;
-            document.getElementById('signal-strength').textContent =
-                avgLatency < 100 ? 'Excellent' : avgLatency < 300 ? 'Good' : 'Poor';
-        }
-
-        // Initialize new features
-        monitorConnection();
-        document.body.classList.add(localStorage.getItem('theme') === 'light' ? 'light-theme' : 'dark-theme');
-
-        // Transmitter Channels Visualization
-        // function createChannelDisplay() {
-        //     const container = document.getElementById('channels-display');
-
-        //     // Create analog channels (1-6)
-        //     for (let i = 1; i <= 10; i++) {
-        //         const channel = document.createElement('div');
-        //         channel.className = 'channel';
-        //         channel.innerHTML = `
-        //     <div>CH${i}</div>
-        //     <div class="analog-bar">
-        //         <div class="analog-fill" id="channel-${i}"></div>
-        //     </div>
-        //     <div class="channel-value">0%</div>
-        // `;
-        //         container.appendChild(channel);
-        //     }
-
-        //     // Create digital channels (7-10)
-        //     for (let i = 7; i <= 10; i++) {
-        //         const channel = document.createElement('div');
-        //         channel.className = 'channel';
-        //         channel.innerHTML = `
-        //     <div>CH${i}</div>
-        //     <div class="digital-led" id="channel-${i}"></div>
-        //     <div class="channel-state">OFF</div>
-        // `;
-        //         container.appendChild(channel);
-        //     }
-        // }
-
-        function createChannelDisplay() {
-            // console.log('Creating channel display...');
-            const container = document.getElementById('channels-display');
-            container.innerHTML = ''; // Clear existing content
-
-            // Create analog channels (1-4, 9-10)
-            for (let i = 1; i <= 10; i++) {
-                if (i <= 4 || i >= 9) {
-                    const channel = document.createElement('div');
-                    channel.className = 'channel';
-                    channel.innerHTML = `
-                <div>CH${i}</div>
-                <div class="analog-bar">
-                    <div class="analog-fill" id="channel-${i}"></div>
-                </div>
-                <div class="channel-value">0%</div>
-            `;
-                    container.appendChild(channel);
-                }
-            }
-
-            // Create digital channels (5-8)
-            for (let i = 5; i <= 8; i++) {
-                const channel = document.createElement('div');
-                channel.className = 'channel';
-                channel.innerHTML = `
-            <div>CH${i}</div>
-            <div class="digital-led" id="channel-${i}"></div>
-            <div class="channel-state">OFF</div>
-        `;
-                container.appendChild(channel);
-            }
-        }
-
-        // Handle channel data updates
-        function updateChannels(data) {
-            // Validate and normalize data format
-            const channelData = Array.isArray(data)
-                ? Object.fromEntries(data.map((v, i) => [`ch_${i + 1}`, v]))
-                : data;
-
-            Object.entries(channelData).forEach(([key, value]) => {
-                // console.log(`Processing channel data for ${key}: ${value}`);
-                // Safely extract channel number
-                const channelNumber = parseInt(key.match(/\d+/)?.[0], 10);
-                if (isNaN(channelNumber)) {
-                    console.warn(`Invalid channel key format: ${key}`);
-                    return;
-                }
-
-                const element = document.getElementById(`channel-${channelNumber}`);
-                if (!element) {
-                    console.warn(`Element not found for channel ${channelNumber}`);
-                    return;
-                }
-                // console.log("element", element, "value", value)
-                const valueDisplay = element.closest('.channel')?.querySelector('.channel-value, .channel-state');
-
-                if (!valueDisplay) {
-                    console.warn(`Value display not found for channel ${channelNumber}`);
-                    return;
-                }
-
-                // Handle channel types based on number
-                if (channelNumber <= 4 || channelNumber >= 9) { // Analog channels
-                    const percentage = Math.min(100, Math.max(0, ((value + 100) / 200 * 100)));
-                    element.style.height = `${percentage.toFixed(0)}%`;
-                    valueDisplay.textContent = `${percentage.toFixed(0)}%`;
-                } else { // Digital channels (5-8)
-                    const isActive = value > 0;
-                    element.classList.toggle('active', isActive);
-                    valueDisplay.textContent = isActive ? 'ON' : 'OFF';
-                }
-            });
-        }
-
-
-
-
-        // Enhanced Connection Status
-        function updateConnectionStatus() {
-            const statusDot = document.querySelector('.status-dot');
-            const statusText = document.querySelector('.connection-status span');
-
-            statusDot.classList.toggle('connected', socket.connected);
-            statusText.textContent = socket.connected ?
-                'Connected' : 'Disconnected - Attempting to reconnect...';
-        }
-
-        // Add these to your existing socket listeners
-        socket.on('gps_data', (data) => {
-            updatePosition(data.lat, data.lon, data.accuracy, data.satellites, data.source);
-        });
-
-        // Initialize map with better defaults
-        L.control.scale({ imperial: false }).addTo(map);
-        map.createPane('accuracy');
-        map.getPane('accuracy').style.zIndex = 399;
-
     </script>
 </body>
 

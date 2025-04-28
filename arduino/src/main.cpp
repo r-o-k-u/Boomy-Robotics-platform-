@@ -1,7 +1,10 @@
 #include <Arduino.h>
 #include <IBusBM.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_ADXL345_U.h>
 
 IBusBM ibus;
+Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
 
 // Define the number of channels
 const uint8_t NUM_CHANNELS = 10; // Adjust this value based on your system
@@ -14,6 +17,24 @@ const uint8_t MOTOR1_DIR = 6;
 const uint8_t MOTOR2_PWM = 9;
 const uint8_t MOTOR2_DIR = 10;
 // PIN 19 is used for IBUS RX, so we can't use it for PWM its used for RX by the rc receiver
+
+
+// Connect the ADXL345:
+
+// VCC → 3.3V
+
+// GND → GND
+
+// SDA → SDA (Pin 20)
+
+// SCL → SCL (Pin 21)
+
+// ADXL345 Configuration
+const float GRAVITY = 9.807; // m/s²
+const float ALPHA = 0.2;     // Low-pass filter coefficient
+sensors_event_t event;
+float ax = 0, ay = 0, az = 0; // Filtered accelerations
+float roll = 0, pitch = 0;    // Calculated angles
 
 // State variables
 bool lightsOn = false;
@@ -29,6 +50,28 @@ const uint8_t STEERING_CH = 2; // Channel 3
 const uint8_t LIGHTS_CH = 4;   // Channel 5
 const uint8_t ESTOP_CH = 5;    // Channel 6
 
+
+void initializeAccelerometer() {
+  if(!accel.begin()) {
+    Serial.println("ADXL345 not detected!");
+    while(1);
+  }
+  accel.setRange(ADXL345_RANGE_16_G);
+  accel.setDataRate(ADXL345_DATARATE_3200_HZ);
+}
+
+void updateMotionData() {
+  accel.getEvent(&event);
+  
+  // Apply low-pass filter
+  ax = ALPHA * event.acceleration.x + (1 - ALPHA) * ax;
+  ay = ALPHA * event.acceleration.y + (1 - ALPHA) * ay;
+  az = ALPHA * event.acceleration.z + (1 - ALPHA) * az;
+
+  // Calculate orientation angles (degrees)
+  roll = atan2(ay, az) * 180/PI;
+  pitch = atan2(-ax, sqrt(ay*ay + az*az)) * 180/PI;
+}
 int readChannel(byte channelInput, int minLimit, int maxLimit, int defaultValue)
 {
   uint16_t ch = ibus.readChannel(channelInput);
@@ -109,7 +152,24 @@ void sendTelemetry()
       Serial.print(",");
   }
   Serial.print("]");
-
+   // Motion data
+   Serial.print(",\"accel\":{");
+   Serial.print("\"x\":");
+   Serial.print(ax, 2);
+   Serial.print(",\"y\":");
+   Serial.print(ay, 2);
+   Serial.print(",\"z\":");
+   Serial.print(az, 2);
+   Serial.print(",\"mag\":");
+   Serial.print(sqrt(ax*ax + ay*ay + az*az), 2);
+   Serial.print("}");
+ 
+   Serial.print(",\"orientation\":{");
+   Serial.print("\"roll\":");
+   Serial.print(roll, 1);
+   Serial.print(",\"pitch\":");
+   Serial.print(pitch, 1);
+   Serial.print("}");
   // Switch states
   Serial.print(",\"sw\":[");
   for (uint8_t i = 4; i < 8; i++)
@@ -153,7 +213,11 @@ void sendTelemetry()
 void setup()
 {
   Serial.begin(115200);
+  while (!Serial); // Wait for serial connection
+  Serial.println("\n\nSystem Initializing...");
   ibus.begin(Serial1);
+  
+  initializeAccelerometer();
 
   pinMode(RELAY1_PIN, OUTPUT);
   pinMode(RELAY2_PIN, OUTPUT);
@@ -163,10 +227,14 @@ void setup()
   // Initialize outputs
   digitalWrite(RELAY1_PIN, LOW);
   digitalWrite(RELAY2_PIN, LOW);
+
+  Serial.println("Initialization Complete!");
 }
 
 void loop()
 {
+  // Serial.print("starting ....");
+  updateMotionData();
   updateEStop();
   updateLights();
 
@@ -199,15 +267,35 @@ void loop()
   delay(20);
 }
 
-// Example Serial Telemetry JSON Structure : {
-//   "t" : 123456, // Timestamp in ms
-//   "ch_raw" : [  // Raw channels as objects
-//     {"ch1" : 1500}, {"ch2" : 1490}, {"ch3" : 1520}, ...
+// Example Serial Telemetry JSON Structure: 
+// {
+//   "t": 123456,               // Timestamp in milliseconds
+//   "ch_raw": [                // Raw channel values
+//     {"ch1": 1500},           // Throttle channel (analog)
+//     {"ch2": 1490},           // Analog channel
+//     {"ch3": 1520},           // Steering channel (analog)
+//     {"ch4": 0},              // Digital channel
+//     {"ch5": 1},              // Lights switch
+//     {"ch6": 0},              // E-Stop switch
+//     {"ch7": 1},              // Digital channel
+//     {"ch8": 0},              // Digital channel
+//     {"ch9": 1450},           // Analog channel
+//     {"ch10": 1550}           // Analog channel
 //   ],
-//   "sw" : [ 0, 1, 0, 1 ], // Switch states for channels 5–8
-//   "lights" : true,
-//   "estop" : false,
-//   "brakes" : false,
-//   "motors" : [ 120, -90 ], // Motor1 & Motor2 PWM speeds
-//   "status" : "MOVING"
+//   "accel": {                 // ADXL345 accelerometer data
+//     "x": 0.12,               // X-axis acceleration (m/s²)
+//     "y": -0.05,              // Y-axis acceleration (m/s²)
+//     "z": 9.81,               // Z-axis acceleration (m/s²)
+//     "mag": 9.82              // Total acceleration magnitude
+//   },
+//   "orientation": {           // Calculated orientation
+//     "roll": 1.2,             // Roll angle in degrees
+//     "pitch": -0.8            // Pitch angle in degrees
+//   },
+//   "sw": [0, 1, 0, 1],       // Switch states (channels 5-8)
+//   "lights": true,            // Lighting system status
+//   "estop": false,            // Emergency stop status
+//   "brakes": false,           // Braking system status
+//   "motors": [120, -90],      // Motor speeds [M1, M2] (-255 to 255)
+//   "status": "MOVING"         // System status
 // }

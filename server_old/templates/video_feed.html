@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Feed</title>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
+</head>
+
+<body>
+  <nav class="navbar navbar-expand-lg navbar-light bg-light">
+    <a class="navbar-brand" href="/">Robot Control Station</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent"
+      aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav mr-auto">
+        <li class="nav-item active">
+          <a class="nav-link" href="/">Home <span class="sr-only">(current)</span></a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/motor_control">Motor Control</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/sensor_data">Sensor Data</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/video_feed">Video Feed</a>
+        </li>
+      </ul>
+
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent"
+        aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+    </div>
+  </nav>
+
+  <div class="container mt-5">
+    <h1>Video Feed</h1>
+
+    <video id="video-feed" width="640" height="480" autoplay></video>
+
+    <script src="https://cdn.jsdelivr.net/npm/video.js@latest/build/video.js"></script>
+    <script>
+      var video = document.getElementById('video-feed');
+      video.srcObject = navigator.mediaSource.createObjectSource(new MediaStream());
+      video.play();
+    </script>
+  </div>
+
+</body>
+
+</html>

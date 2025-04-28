@@ -102,6 +102,28 @@ class SerialManager:
         else:
             print("Common ports: /dev/ttyACM*, /dev/ttyUSB*, /dev/ttyS*")
 
+    def get_gps(self):
+        """Get current GPS coordinates from the best available source."""
+        # If GPS coordinates from the serial manager are available, return those
+        if self.gps_coords['source'] != 'default': 
+            return self.gps_coords
+
+        # Fallback to IP geolocation if no GPS data
+        try:
+            ip_loc = geocoder.ip('me')
+            if ip_loc.ok:
+                self.gps_coords = {
+                    'lat': ip_loc.latlng[0],
+                    'lon': ip_loc.latlng[1],
+                    'source': 'ip_geolocation'
+                }
+                return self.gps_coords
+        except Exception as e:
+            print(f"IP geolocation failed: {e}")
+        
+        # Default case: if everything fails
+        return {'lat': 0.0, 'lon': 0.0, 'source': 'default'}
+    
     # def parse_telemetry(self, data):
     #     """Parse telemetry data into dictionary"""
     #     try:
@@ -397,12 +419,12 @@ def background_listener():
             socketio.emit('receiver_channels', data)
 
             # Get current GPS coordinates from best source
-            # gps = serial_mgr.get_gps()
-            # socketio.emit('gps_update', {
-            #     'lat': gps['lat'],
-            #     'lon': gps['lon'],
-            #     'source': gps['source']
-            # })
+            gps = serial_mgr.get_gps()
+            socketio.emit('gps_update', {
+                'lat': gps['lat'],
+                'lon': gps['lon'],
+                'source': gps['source']
+            })
 
             time.sleep(0.05)  # Prevent flooding
 
