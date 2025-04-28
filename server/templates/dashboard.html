@@ -556,6 +556,18 @@
             gap: 1rem;
             margin: 0.25rem 0;
         }
+
+        .webgl-error {
+            padding: 1rem;
+            background: #e74c3c;
+            color: white;
+            border-radius: 8px;
+        }
+
+        .webgl-error a {
+            color: #f1c40f;
+            text-decoration: underline;
+        }
     </style>
 </head>
 
@@ -579,9 +591,9 @@
                 <div class="axis-label">YAW: <span id="yaw-value">0.00°</span></div>
             </div>
         </div>
-        
 
-        
+
+
         <div class="panel  video-feed">
             <div class="resize-handle bottom-right"></div>
             <img src="/video_feed" alt="Live Feed" class="video-stream">
@@ -756,10 +768,25 @@
             ready: false,
 
             init(containerId) {
+
                 // Scene setup
                 this.scene = new THREE.Scene();
                 this.camera = new THREE.PerspectiveCamera(75, 400 / 300, 0.1, 1000);
-                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                try {
+                    this.renderer = new THREE.WebGLRenderer({
+                        antialias: true,
+                        powerPreference: 'high-performance',
+                        failIfMajorPerformanceCaveat: true
+                    });
+                } catch (error) {
+                    console.error('WebGL initialization failed:', error);
+                    this.showWebGLError();
+                    return;
+                }
+
+                if (!this.renderer.getContext().getExtension('WEBGL_lose_context')) {
+                    console.warn('Limited WebGL capabilities detected');
+                }
 
 
                 // Lighting
@@ -812,6 +839,20 @@
                 this.scene.add(roverGroup);
             },
 
+            showWebGLError() {
+                const container = document.getElementById(containerId);
+                container.innerHTML = `
+                        <div class="webgl-error">
+                            <h3>Graphics Initialization Failed</h3>
+                            <p>Please ensure:</p>
+                            <ul>
+                                <li>Hardware acceleration is enabled in browser settings</li>
+                                <li>Your GPU drivers are up to date</li>
+                                <li>WebGL is supported (visit <a href="https://get.webgl.org/" target="_blank">get.webgl.org</a>)</li>
+                            </ul>
+                        </div>
+                    `;
+            },
             updateOrientation(roll, pitch) {
                 if (!this.ready || !this.rover) return;
 
@@ -899,6 +940,12 @@
                     fallback.id = 'gps-coords';
                     document.querySelector('.status-bar').appendChild(fallback);
                     this.ui.indicators.gpsCoords = fallback;
+                }
+
+                if (!this.renderer) {
+                    console.warn('Falling back to CanvasRenderer');
+                    this.renderer = new THREE.CanvasRenderer();
+                    this.renderer.setPixelRatio(window.devicePixelRatio);
                 }
 
             },
