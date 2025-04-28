@@ -8,6 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root {
             --primary: #1a2b3c;
@@ -492,35 +493,115 @@
             margin-left: 1rem;
             background: #2c3e50;
         }
+
+        .dashboard {
+            position: relative;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            grid-auto-rows: minmax(200px, auto);
+            gap: 1rem;
+            padding: 1rem;
+        }
+
+        .panel {
+            position: relative;
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: move;
+            user-select: none;
+        }
+
+        .panel:hover {
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .resize-handle {
+            position: absolute;
+            background: var(--secondary);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .resize-handle.bottom-right {
+            right: 0;
+            bottom: 0;
+            width: 15px;
+            height: 15px;
+            cursor: nwse-resize;
+            border-bottom-right-radius: 12px;
+        }
+
+        .panel:hover .resize-handle {
+            opacity: 0.8;
+        }
+
+        .orientation-display {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-family: monospace;
+        }
+
+        .axis-label {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            margin: 0.25rem 0;
+        }
     </style>
 </head>
 
 <body>
     <div class="dashboard">
-        <div class="map-container" id="map"></div>
-        <div id="rover-3d-view" style="width: 400px; height: 300px;"></div>
-
-        <div class="map-overlay">
-            <div>GPS Accuracy: <span id="gps-accuracy">0m</span></div>
-            <div>Satellites: <span id="gps-satellites">0</span></div>
-            <button onclick="clearPath()" style="margin-top: 0.5rem;">🧹 Clear Path</button>
+        <div class="panel  map-container" id="map">
+            <div class="resize-handle bottom-right"></div>
+            <div class="  map-overlay">
+                <div class="resize-handle bottom-right"></div>
+                <div>GPS Accuracy: <span id="gps-accuracy">0m</span></div>
+                <div>Satellites: <span id="gps-satellites">0</span></div>
+                <button onclick="clearPath()" style="margin-top: 0.5rem;">🧹 Clear Path</button>
+            </div>
         </div>
-        <div class="video-feed">
+        <div id="panel  rover-3d-view" style="width: 400px; height: 300px;">
+            <div class="resize-handle bottom-right"></div>
+            <div class="orientation-display" id="orientation-display">
+                <div class="resize-handle bottom-right"></div>
+                <div class="axis-label">ROLL: <span id="roll-value">0.00°</span></div>
+                <div class="axis-label">PITCH: <span id="pitch-value">0.00°</span></div>
+                <div class="axis-label">YAW: <span id="yaw-value">0.00°</span></div>
+            </div>
+        </div>
+        
+
+        
+        <div class="panel  video-feed">
+            <div class="resize-handle bottom-right"></div>
             <img src="/video_feed" alt="Live Feed" class="video-stream">
             <div class="video-overlay">
                 <div class="gps-indicator" id="gps-source">GPS: Acquiring...</div>
                 <div class="altitude-indicator">ALT: 15.2m</div>
             </div>
         </div>
-        <div class="transmitter-panel">
+        <div class="panel  transmitter-panel">
+            <div class="resize-handle bottom-right"></div>
             <h3>Receiver Channels</h3>
             <div class="channel-container" id="channels-display"></div>
         </div>
     </div>
 
-    <div class="telemetry-panel">
+    <div class="panel  telemetry-panel">
+        <div class="resize-handle bottom-right"></div>
         <h2>Flight Telemetry</h2>
         <div class="telemetry-grid" id="telemetry">
+
             <div class="telemetry-item"><strong>Time:</strong> <span id="telemetry-timestamp">0</span> ms</div>
             <div class="telemetry-item"><strong>Raw Channels:</strong>
                 <ul id="telemetry-raw" class="telemetry-list"></ul>
@@ -569,7 +650,9 @@
         </div> -->
     </div>
 
-    <div class="control-panel">
+    <div class="panel  control-panel">
+        <div class="telemetry-item"><strong>Time:</strong> <span id="telemetry-timestamp">0</span> ms</div>
+
         <div class="button-row">
             <button class="success" onclick="sendCommand('activate')">🔋 Power On</button>
             <button onclick="sendCommand('auto_mode')">🤖 Auto Mode</button>
@@ -614,6 +697,54 @@
                 DIGITAL: [5, 6, 7, 8]
             }
         };
+
+        // Panel Management System
+        const PanelManager = {
+            init() {
+                interact('.panel').draggable({
+                    inertia: true,
+                    modifiers: [
+                        interact.modifiers.restrictRect({
+                            restriction: 'body',
+                            endOnly: true
+                        })
+                    ],
+                    autoScroll: true,
+                    listeners: {
+                        move: event => {
+                            const target = event.target
+                            const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx
+                            const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy
+
+                            target.style.transform = `translate(${x}px, ${y}px)`
+                            target.setAttribute('data-x', x)
+                            target.setAttribute('data-y', y)
+                        }
+                    }
+                }).resizable({
+                    edges: { right: true, bottom: true },
+                    listeners: {
+                        move: event => {
+                            const target = event.target
+                            let width = parseFloat(target.style.width) || 300
+                            let height = parseFloat(target.style.height) || 200
+
+                            width = Math.max(300, width + event.deltaRect.right)
+                            height = Math.max(200, height + event.deltaRect.bottom)
+
+                            target.style.width = `${width}px`
+                            target.style.height = `${height}px`
+                        }
+                    },
+                    modifiers: [
+                        interact.modifiers.aspectRatio({
+                            ratio: 'preserve'
+                        })
+                    ],
+                    inertia: true
+                })
+            }
+        }
 
 
         // 3D Visualization System
@@ -747,6 +878,7 @@
             // Initialization Methods
             init() {
                 console.log("initializing ....")
+                PanelManager.init();
                 Rover3D.init('rover-3d-view');
                 this.initMap();
                 this.initSocket();
@@ -768,7 +900,7 @@
                     document.querySelector('.status-bar').appendChild(fallback);
                     this.ui.indicators.gpsCoords = fallback;
                 }
-                
+
             },
 
             // Map Initialization
@@ -962,6 +1094,14 @@
                     // if (data.accel) {
                     //     Rover3D.updatePosition(data.accel);
                     // }
+
+                    // Add to handleChannelData()
+                    if (data.orientation) {
+                        this.updateOrientationDisplay(data.orientation);
+                        Rover3D.updateOrientation(data.orientation.roll, data.orientation.pitch);
+                    }
+
+
                 } catch (error) {
                     console.error('Error processing channel data:', error);
                 }
@@ -979,6 +1119,12 @@
                 updateIndicator(this.ui.indicators.brake, brakes, 'BRAKE ENGAGED', 'BRAKE RELEASED');
             },
 
+            // Add new method
+            updateOrientationDisplay({ roll, pitch, yaw }) {
+                document.getElementById('roll-value').textContent = `${roll.toFixed(2)}°`;
+                document.getElementById('pitch-value').textContent = `${pitch.toFixed(2)}°`;
+                document.getElementById('yaw-value').textContent = `${yaw?.toFixed(2) || '0.00'}°`;
+            },
             // Motor Control Logic
             calculateMotorPowers(x, y) {
                 const turnSensitivity = 0.7;
