@@ -1,0 +1,433 @@
+:root {
+    --primary: #1a2b3c;
+    --secondary: #2ecc71;
+    --accent: #3498db;
+    --danger: #e74c3c;
+    --text: #ecf0f1;
+    --bg: #121a21;
+    --card-bg: rgba(255, 255, 255, 0.05);
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Base Layout */
+html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+
+.dashboard-container {
+    display: grid;
+    grid-template-columns: 1.5fr 2fr 1fr;
+    gap: 1rem;
+    height: 100vh;
+    padding: 1rem;
+    background: var(--bg);
+    box-sizing: border-box;
+}
+
+.column {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.panel {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 1rem;
+    backdrop-filter: blur(10px);
+    overflow: hidden;
+    position: relative;
+}
+
+/* Resizable and Draggable Panels */
+.interactive-panel {
+    touch-action: none;
+    user-select: none;
+}
+
+.resize-handle {
+    position: absolute;
+    background: var(--secondary);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.resize-handle.bottom-right {
+    right: 0;
+    bottom: 0;
+    width: 15px;
+    height: 15px;
+    cursor: nwse-resize;
+}
+
+.panel:hover .resize-handle {
+    opacity: 0.8;
+}
+
+/* Map Container */
+.map-container {
+    height: 60vh;
+    min-height: 400px;
+}
+
+/* Instrument Panel */
+.instrument-panel {
+    height: 300px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.attitude-indicator,
+.heading-indicator {
+    background: #000;
+    border-radius: 8px;
+    position: relative;
+}
+
+/* Telemetry Panel */
+.telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.5rem;
+}
+
+.telemetry-item {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
+/* Control Panel */
+.control-panel {
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.joystick-container {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.virtual-joystick {
+    width: 150px;
+    height: 150px;
+    margin: 0 auto;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+}
+
+/* System Status */
+.status-grid {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.status-item {
+    display: grid;
+    grid-template-columns: 60px 1fr 40px;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.battery-bar,
+.signal-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.battery-bar::after {
+    content: '';
+    display: block;
+    height: 100%;
+    background: var(--secondary);
+    width: 75%;
+}
+
+/* Video Panel */
+.video-panel {
+    aspect-ratio: 16/9;
+    background: #000;
+    position: relative;
+}
+
+.video-tabs {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    z-index: 100;
+}
+
+.video-tab {
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.video-tab.active {
+    background: var(--accent);
+}
+
+/* 3D Visualization Panel */
+.rover-3d-panel {
+    position: relative;
+    background: var(--card-bg);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#rover-canvas {
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+.orientation-display {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 1rem;
+    border-radius: 8px;
+    z-index: 100;
+}
+
+.axis-label {
+    margin: 0.5rem 0;
+    font-family: monospace;
+}
+
+/* Channel items with responsive layout */
+.channel-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+}
+
+/* Analog channel progress bars */
+.channel-progress {
+    height: 8px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0.5rem 0;
+}
+
+/* Digital LED indicators */
+.digital-led {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #e74c3c;
+    margin: 0.5rem auto;
+    transition: background 0.3s ease;
+}
+
+/* Status indicator grid */
+.status-indicators {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+/* Responsive Grid Layout */
+@media (max-width: 1200px) {
+    .dashboard-container {
+        grid-template-columns: 1fr 1.5fr;
+        grid-template-areas: 
+            "left center"
+            "right center";
+    }
+    
+    .column.left { grid-area: left; }
+    .column.center { grid-area: center; }
+    .column.right { grid-area: right; }
+}
+
+@media (max-width: 992px) {
+    .dashboard-container {
+        grid-template-columns: 1fr;
+        grid-template-areas: 
+            "center"
+            "left"
+            "right";
+    }
+    
+    .column {
+        min-height: auto !important;
+    }
+    
+    .map-container {
+        height: 50vh;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-container {
+        padding: 0.5rem;
+        gap: 0.5rem;
+    }
+    
+    .panel {
+        padding: 0.75rem;
+    }
+}
+
+/* Flexible Columns */
+.column {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-height: 0; /* Allow columns to shrink */
+}
+
+/* Responsive Panels */
+.panel {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 1rem;
+    backdrop-filter: blur(10px);
+    overflow: hidden;
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 200px;
+}
+
+/* Map Container */
+.map-container {
+    height: 60vh;
+    min-height: 300px;
+}
+
+/* Instrument Panel */
+.instrument-panel {
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    gap: 1rem;
+    flex: 1;
+}
+
+.rover-3d-panel {
+    position: relative;
+    height: 100%;
+}
+
+#rover-canvas {
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+/* Video Panel */
+/* .video-panel {
+    position: relative;
+    padding-top: 56.25%;  16:9 Aspect Ratio *
+    background: #000;
+} */
+
+/* .video-panel img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+} */
+
+/* Telemetry Grid */
+/* .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.5rem;
+} */
+
+/* Control Panel */
+/* .control-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.joystick-container {
+    aspect-ratio: 1/1;
+    max-width: 200px;
+    margin: 1rem auto;
+}
+
+.virtual-joystick {
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+} */
+
+/* Channel Container */
+.channel-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 0.5rem;
+}
+
+/* Mobile Optimization */
+@media (max-width: 576px) {
+    .status-indicators {
+        grid-template-columns: 1fr;
+    }
+    
+    .telemetry-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    .control-modes {
+        flex-wrap: wrap;
+    }
+    
+    .mode-btn {
+        flex: 1 1 45%;
+        margin: 2px;
+    }
+    
+    .joystick-container {
+        max-width: 150px;
+    }
+}
+
+/* Orientation Handling */
+@media (orientation: portrait) {
+    .dashboard-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .instrument-panel {
+        grid-template-rows: 1fr;
+    }
+}
+
+/* High DPI Screens */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) { 
+    .panel {
+        border: 0.5px solid rgba(255, 255, 255, 0.1);
+    }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0a0f14;
+        --card-bg: rgba(0, 0, 0, 0.3);
+    }
+}
