@@ -1,4 +1,0 @@
--r requirements.txt
-adafruit-circuitpython-busdevice==5.1.2
-smbus2==0.4.1
-pigpio==1.78
