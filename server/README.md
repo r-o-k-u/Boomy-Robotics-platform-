@@ -7,7 +7,6 @@ python -m venv venv
 # On Windows
 ```
 venv/Scripts/activate
-
 ```
 
 # On macOS/Linux
@@ -25,6 +24,9 @@ source venv/bin/activate
 
  pip install -r requirements-dev.txt
 
+
+ pip install -r requirements-wi.txt
+
 ```
 ## For Raspberry Pi:
 
@@ -35,10 +37,86 @@ pip install -r requirements-rpi.txt
 
 # to run
 ```
-python app.py --port=5001
+python app/__init__.py --port=5001
 
 ```
 ###
+
+Installation Requirements:
+
+bash
+# Linux
+sudo apt-get install libfreenect-dev
+pip install freenect
+
+# Windows
+pip install freenect
+# Install WinUSB driver using Zadig for "Xbox NUI Motor"
+Here's how to install the WinUSB driver for Kinect v1 using Zadig:
+
+Step-by-Step Guide
+Download Zadig
+Get the latest version from the official site:
+https://zadig.akeo.ie
+
+Connect Kinect v1
+Plug your Kinect into a USB 2.0+ port and wait for Windows to detect it.
+
+Run Zadig as Administrator
+Right-click Zadig → "Run as administrator"
+
+Configure Zadig:
+Go to Options → List All Devices
+
+Zadig Options
+
+Select Device:
+From the dropdown, choose "Xbox NUI Motor (Interface 0)"
+
+Select Xbox NUI Motor
+
+Install WinUSB Driver:
+
+Driver: Select WinUSB from the right-side dropdown
+
+Click "Replace Driver"
+
+Install WinUSB
+
+Wait for Completion
+You'll see a success message when done:
+Driver Installation Complete!
+
+Verification
+Check Device Manager:
+Under "Universal Serial Bus devices", you should see:
+"WinUSB Device"
+
+Device Manager
+
+Test with Python:
+
+python
+import freenect
+print(f"Found {freenect.num_devices()} Kinect devices")
+Test with CLI Tool:
+
+bash
+freenect-glview
+Troubleshooting
+Issue	Solution
+Device not listed	Unplug/replug Kinect, ensure USB 2.0+ port
+Driver install fails	Disable driver signature enforcement (Windows Advanced Startup)
+Access denied errors	Run Zadig as Administrator
+Depth sensor not working	Repeat steps for "Xbox NUI Motor (Interface 1)"
+Important Notes
+Do this once per USB port you use with Kinect
+
+Required for both Windows 10 and 11
+
+Not needed for Linux (works out-of-box with libfreenect)
+
+After completing these steps, your Kinect v1 will work with libfreenect in Python! 🎉
 
 pip install flask numpy opencv-python
 sudo apt-get install libfreenect-dev  # For Linux
@@ -103,3 +181,57 @@ flask-socketio==5.1.1
 pyserial==3.5
 opencv-python-headless==4.5.5.64
 gunicorn==20.1.0  # Production server
+
+
+Key Features & Enhancements
+Complete Hardware Integration
+
+Kinect v1 RGB and Depth streams
+
+Webcam fallback with automatic detection
+
+Serial communication with retry logic
+
+Motor control commands
+
+Kinect LED and tilt control
+
+Enhanced Error Handling
+
+Graceful hardware failure recovery
+
+Automatic webcam fallback
+
+Serial connection retries
+
+Comprehensive error logging
+
+Real-Time Data System
+
+WebSocket telemetry updates
+
+GPS position tracking
+
+Multi-threaded data processing
+
+Asynchronous video streaming
+
+Security Features
+
+HTTP Basic Authentication
+
+Configurable credentials
+
+Secure secret management
+
+Input validation
+
+Documentation & Maintainability
+
+Full PEP8 compliance
+
+Detailed docstrings
+
+Type hinting
+
+Configuration via environment

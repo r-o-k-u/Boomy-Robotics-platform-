@@ -1,0 +1,296 @@
+:root {
+    --primary: #1a2b3c;
+    --secondary: #2ecc71;
+    --accent: #3498db;
+    --danger: #e74c3c;
+    --text: #ecf0f1;
+    --bg: #121a21;
+    --card-bg: rgba(255, 255, 255, 0.05);
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1)
+}
+
+/* Base Layout */
+html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    color: #ffff;
+}
+
+.dashboard-container {
+    display: grid;
+    grid-template-columns: 1.5fr 2fr 1fr;
+    gap: 1rem;
+    height: 100vh;
+    padding: 1rem;
+    background: var(--bg);
+    box-sizing: border-box;
+}
+
+.column {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.panel {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 1rem;
+    backdrop-filter: blur(10px);
+    overflow: hidden;
+    position: relative;
+}
+
+/* Resizable and Draggable Panels */
+.interactive-panel {
+    touch-action: none;
+    user-select: none;
+}
+
+.resize-handle {
+    position: absolute;
+    background: var(--secondary);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.resize-handle.bottom-right {
+    right: 0;
+    bottom: 0;
+    width: 15px;
+    height: 15px;
+    cursor: nwse-resize;
+}
+
+.panel:hover .resize-handle {
+    opacity: 0.8;
+}
+
+/* Map Container */
+.map-container {
+    height: 60vh;
+    min-height: 400px;
+}
+
+/* Instrument Panel */
+.instrument-panel {
+    height: 300px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.attitude-indicator,
+.heading-indicator {
+    background: #000;
+    border-radius: 8px;
+    position: relative;
+}
+
+/* Telemetry Panel */
+.telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.5rem;
+}
+
+.telemetry-item {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
+/* Control Panel */
+.control-panel {
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.joystick-container {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.virtual-joystick {
+    width: 150px;
+    height: 150px;
+    margin: 0 auto;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+}
+
+/* System Status */
+.status-bar {
+    grid-area: status;
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 8px;
+}
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #7f8c8d;
+    transition: var(--transition);
+}
+
+.status-dot.connected {
+    background: #2ecc71;
+    box-shadow: 0 0 8px #2ecc71;
+}
+.status-grid {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.status-item {
+    display: grid;
+    grid-template-columns: 60px 1fr 40px;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.battery-bar,
+.signal-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.battery-bar::after {
+    content: '';
+    display: block;
+    height: 100%;
+    background: var(--secondary);
+    width: 75%;
+}
+
+/* Video Panel */
+.video-panel img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: opacity 0.3s ease;
+}
+
+.video-panel .hidden-feed {
+    opacity: 0;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.video-panel .active-feed {
+    opacity: 1;
+    z-index: 2;
+    pointer-events: all;
+}
+
+.video-tabs {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    z-index: 3;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+}
+
+.video-tab {
+    padding: 0.8rem 1.2rem;
+    cursor: pointer;
+    color: rgba(255,255,255,0.7);
+    transition: all 0.3s ease;
+    border-bottom: 2px solid transparent;
+}
+
+.video-tab.active {
+    color: white;
+    border-bottom-color: var(--accent);
+    background: rgba(255,255,255,0.1);
+}
+
+.video-tab:hover:not(.active) {
+    background: rgba(255,255,255,0.05);
+}
+/* 3D Visualization Panel */
+.rover-3d-panel {
+    position: relative;
+    background: var(--card-bg);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#rover-canvas {
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+.orientation-display {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 1rem;
+    border-radius: 8px;
+    z-index: 100;
+}
+
+.axis-label {
+    margin: 0.5rem 0;
+    font-family: monospace;
+}
+
+/* Channel items with responsive layout */
+.channel-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+}
+
+/* Analog channel progress bars */
+.channel-progress {
+    height: 8px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0.5rem 0;
+}
+
+/* Digital LED indicators */
+.digital-led {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #e74c3c;
+    margin: 0.5rem auto;
+    transition: background 0.3s ease;
+}
+
+/* Status indicator grid */
+.status-indicators {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
