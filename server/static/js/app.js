@@ -310,13 +310,15 @@ class WebSocketManager {
     }
 }
 
-class MapManager {
+class MapManager { 
+     
     static init() {
-        this.map = L.map('map-panel').setView([0, 0], 15);
+        this.current= [-0.702273, 36.426804];
+        this.map = L.map('map-panel').setView(this.current, 15);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(this.map);
-        this.marker = L.marker([0, 0]).addTo(this.map);
-        this.accuracyCircle = L.circle([0, 0], {radius: 0}).addTo(this.map);
+        this.marker = L.marker(this.current).addTo(this.map);
+        this.accuracyCircle = L.circle([0, 0], {radius: 0}).addTo(this.map); 
         
         this.map.on('contextmenu', e => this.addWaypoint(e.latlng));
     }
@@ -342,8 +344,8 @@ class MapManager {
     }
 }
 
-class ControlManager {
-    static setMode(mode) {
+class ControlManager { 
+    static setMode(mode) { 
         document.querySelectorAll('.mode-btn').forEach(btn => 
             btn.classList.toggle('active', btn.dataset.mode === mode)
         );
@@ -415,6 +417,7 @@ class UIManager {
     }
 
     static updateChannels(channels) {
+        console.log("channels", channels)
         channels.forEach((value, index) => {
             const element = document.getElementById(`channel-${index+1}`);
             if (element) {

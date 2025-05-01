@@ -8,10 +8,6 @@
     
     <!-- External Dependencies -->
      <!-- External Dependencies -->
-     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css">
-     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
-     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
@@ -66,12 +62,36 @@
             </div>
             
             <div class="panel video-panel" data-panel-id="video">
+               
                 <div class="video-tabs">
                     <div class="video-tab active" data-feed="camera">Camera</div>
                     <div class="video-tab" data-feed="depth">Depth</div>
                 </div>
                 <img src="/video_feed" class="active-feed">
                 <img src="/depth_feed" class="hidden-feed">
+                <div class="kinect-settings hidden-feed">
+                    <div class="control-group">
+                        <label>LED Color:</label>
+                        <select id="kinect-led-color" class="form-control">
+                            <option value="green">Green</option>
+                            <option value="red">Red</option>
+                            <option value="blink_green">Blink Green</option>
+                            <option value="blink_red">Blink Red</option>
+                        </select>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label>Tilt Angle: <span id="tilt-value">0°</span></label>
+                        <input type="range" id="kinect-tilt" min="-27" max="27" value="0" 
+                               class="form-range" style="width: 200px;">
+                    </div>
+                    
+                    <div class="control-group">
+                        <button onclick="toggleDepthSensor()" class="btn btn-secondary">
+                            Toggle Depth Sensor
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -82,6 +102,7 @@
                     <button class="mode-btn" data-mode="auto">🤖 Auto</button>
                     <button class="mode-btn active" data-mode="manual">✋ Manual</button>
                     <button class="mode-btn" data-mode="radio">📻 Radio</button>
+                    <button class="mode-btn" data-mode="joystick">📻 Joystick</button>
                 </div>
                 <div class="joystick-container">
                     <div class="virtual-joystick" id="main-joystick"></div>

@@ -83,7 +83,7 @@ class SerialManager:
             'accuracy': 0.0
         }
         self._connect_serial()       # Establish initial connection
-        self.update_interval = 0.1   # Serial read interval in seconds
+        self.update_interval = 0.01   # Serial read interval in seconds
 
         self.ibus_ser = None  # Separate serial for IBus receiver
         self.ibus_lock = Lock()
